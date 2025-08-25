@@ -231,16 +231,20 @@ class ProxyExtrasDBManager:
 
     @staticmethod
     def setup_database(use_migrate: bool = False) -> bool:
-        """
-        Set up the database using either prisma migrate or prisma db push
-        Uses migrations from litellm-proxy-extras package
-
+        """Set up the database using either prisma migrate or prisma db push.
+        
+        This function attempts to set up the database by executing either the `prisma
+        migrate deploy` command or the `prisma db push` command based on the
+        `use_migrate` flag. It handles various errors that may arise during migration,
+        including marking failed migrations as rolled back and creating baseline
+        migrations if the database schema is not empty. The function retries the setup
+        process up to four times in case of failures.
+        
         Args:
-            schema_path (str): Path to the Prisma schema file
-            use_migrate (bool): Whether to use prisma migrate instead of db push
-
+            use_migrate (bool): Whether to use prisma migrate instead of db push.
+        
         Returns:
-            bool: True if setup was successful, False otherwise
+            bool: True if setup was successful, False otherwise.
         """
         schema_path = ProxyExtrasDBManager._get_prisma_dir() + "/schema.prisma"
         for attempt in range(4):
