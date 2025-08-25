@@ -771,12 +771,7 @@ class Cache:
             await self.cache.disconnect()
 
     def _supports_async(self) -> bool:
-        """
-        Internal method to check if the cache type supports async get/set operations
-
-        All cache types now support async operations
-
-        """
+        """Check if the cache type supports async operations."""
         return True
 
 
