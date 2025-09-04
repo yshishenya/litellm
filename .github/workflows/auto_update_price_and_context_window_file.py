@@ -45,6 +45,19 @@ def write_to_file(file_path, data):
 
 # Update the existing models and add the missing models for OpenRouter
 def transform_openrouter_data(data):
+    """Transform OpenRouter data into a structured format.
+    
+    This function processes a list of data entries from OpenRouter, extracting
+    relevant fields and transforming them into a standardized dictionary format. It
+    adds fields such as 'max_tokens', 'input_cost_per_token', and conditionally
+    includes 'max_output_tokens' and 'input_cost_per_image' based on the input
+    data. Additionally, it sets provider-specific fields and checks for modality to
+    determine support for vision capabilities. The transformed data is stored using
+    a composite key based on the entry ID.
+    
+    Args:
+        data (list): A list of dictionaries containing OpenRouter data entries.
+    """
     transformed = {}
     for row in data:
         # Add the fields 'max_tokens' and 'input_cost_per_token'
@@ -83,6 +96,17 @@ def transform_openrouter_data(data):
 
 # Update the existing models and add the missing models for Vercel AI Gateway
 def transform_vercel_ai_gateway_data(data):
+    """Transform Vercel AI Gateway data into a structured format.
+    
+    This function processes a list of data entries from the Vercel AI Gateway,
+    extracting relevant pricing and token information. It constructs a dictionary
+    for each entry, including details such as max tokens, input and output costs,
+    and cache pricing if available. The resulting dictionary is keyed by a  unique
+    identifier for each entry, facilitating easy access to the transformed  data.
+    
+    Args:
+        data (list): A list of dictionaries containing Vercel AI Gateway data.
+    """
     transformed = {}
     for row in data:
         obj = {
@@ -127,6 +151,7 @@ def load_local_data(file_path):
         return None
 
 def main():
+    """Main function to load local data and fetch remote model data."""
     local_file_path = "model_prices_and_context_window.json"  # Path to the local data file
     openrouter_url = "https://openrouter.ai/api/v1/models"  # URL to fetch OpenRouter data
     vercel_ai_gateway_url = "https://ai-gateway.vercel.sh/v1/models"  # URL to fetch Vercel AI Gateway data
