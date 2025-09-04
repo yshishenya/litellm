@@ -39,14 +39,13 @@ class VeoVideoGenerator:
         }
     
     def generate_video(self, prompt: str) -> Optional[str]:
-        """
-        Initiate video generation with Veo.
+        """Initiate video generation with Veo.
         
-        Args:
-            prompt: Text description of the video to generate
-            
-        Returns:
-            Operation name if successful, None otherwise
+        This function sends a request to the Veo API to generate a video based on the
+        provided  text description in the `prompt`. It constructs the necessary payload
+        and handles the  response, returning the operation name if the request is
+        successful. In case of failure,  it logs the error details for debugging
+        purposes.
         """
         print(f"🎬 Generating video with prompt: '{prompt}'")
         
@@ -83,15 +82,18 @@ class VeoVideoGenerator:
             return None
     
     def wait_for_completion(self, operation_name: str, max_wait_time: int = 600) -> Optional[str]:
-        """
-        Poll operation status until video generation is complete.
+        """Polls the operation status until video generation is complete.
+        
+        This function monitors the status of a video generation operation by
+        repeatedly sending requests to the specified operation URL. It checks  for
+        errors in the response and determines if the operation is complete.  If
+        successful, it extracts and returns the video URI. The polling  interval
+        increases with each attempt, capped at 30 seconds, and the  function will time
+        out after the specified max_wait_time.
         
         Args:
-            operation_name: Name of the operation to monitor
-            max_wait_time: Maximum time to wait in seconds (default: 10 minutes)
-            
-        Returns:
-            Video URI if successful, None otherwise
+            operation_name: Name of the operation to monitor.
+            max_wait_time: Maximum time to wait in seconds (default: 10 minutes).
         """
         print("⏳ Waiting for video generation to complete...")
         
@@ -143,15 +145,20 @@ class VeoVideoGenerator:
         return None
     
     def download_video(self, video_uri: str, output_filename: str = "generated_video.mp4") -> bool:
-        """
-        Download the generated video file.
+        """Download the generated video file.
+        
+        This function initiates the download of a video file from a specified URI,
+        converting it to a LiteLLM proxy URI if necessary. It handles streaming
+        downloads with automatic redirect management and provides progress updates
+        during the download process. After downloading, it verifies the file's
+        existence and size, ensuring that the download was successful.
         
         Args:
-            video_uri: URI of the video to download (from Google's response)
-            output_filename: Local filename to save the video
-            
+            video_uri (str): URI of the video to download (from Google's response).
+            output_filename (str): Local filename to save the video.
+        
         Returns:
-            True if download successful, False otherwise
+            bool: True if download successful, False otherwise.
         """
         print(f"⬇️  Downloading video...")
         print(f"Original URI: {video_uri}")
@@ -212,17 +219,21 @@ class VeoVideoGenerator:
             return False
     
     def generate_and_download(self, prompt: str, output_filename: str = None) -> bool:
-        """
-        Complete workflow: generate video and download it.
+        # Auto-generate filename if not provided
+        """Complete workflow to generate a video and download it.
+        
+        This function handles the entire process of video generation based on a text
+        description provided in the `prompt`. It first checks if an `output_filename`
+        is given; if not, it auto-generates one using the prompt and the current
+        timestamp.  The function then calls `generate_video` to create the video, waits
+        for the  operation to complete using `wait_for_completion`, and finally
+        downloads the  video using `download_video`. It returns a boolean indicating
+        the success of  the operation.
         
         Args:
-            prompt: Text description for video generation
-            output_filename: Output filename (auto-generated if None)
-            
-        Returns:
-            True if successful, False otherwise
+            prompt: Text description for video generation.
+            output_filename: Output filename (auto-generated if None).
         """
-        # Auto-generate filename if not provided
         if output_filename is None:
             timestamp = int(time.time())
             safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).rstrip()
@@ -259,15 +270,9 @@ class VeoVideoGenerator:
 
 
 def main():
-    """
-    Example usage of the VeoVideoGenerator.
-    
-    Configure these environment variables:
-    - LITELLM_BASE_URL: Your LiteLLM proxy URL (default: http://localhost:4000/gemini/v1beta)
-    - LITELLM_API_KEY: Your LiteLLM API key (default: sk-1234)
-    """
     
     # Configuration from environment or defaults
+    """Starts the Veo Video Generation Example with configured settings."""
     base_url = os.getenv("LITELLM_BASE_URL", "http://localhost:4000/gemini/v1beta")
     api_key = os.getenv("LITELLM_API_KEY", "sk-1234")
     
