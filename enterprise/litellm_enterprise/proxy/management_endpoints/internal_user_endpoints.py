@@ -20,8 +20,23 @@ router = APIRouter()
 async def available_enterprise_users(
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ):
-    """
-    For keys with `max_users` set, return the list of users that are allowed to use the key.
+    """Retrieve the available enterprise users and their limits.
+    
+    This function checks the connection to the database and retrieves the count of
+    users and teams from the LiteLLM_UserTable and LiteLLM_TeamTable. It also
+    evaluates the maximum allowed users and teams based on the enterprise license
+    data, considering whether SSO is enabled. The function returns a summary of
+    total users, total teams, and their respective usage and remaining limits.
+    
+    Args:
+        user_api_key_dict (UserAPIKeyAuth): The user API key authentication data.
+    
+    Returns:
+        dict: A dictionary containing total users, total teams, total users used, total teams
+            used, total teams remaining, and total users remaining.
+    
+    Raises:
+        HTTPException: If the database connection is not established.
     """
     from litellm.proxy._types import CommonProxyErrors, EnterpriseLicenseData
     from litellm.proxy.proxy_server import (
