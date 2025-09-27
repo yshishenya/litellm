@@ -12,7 +12,15 @@ LITELLM_BASE_URL = "http://localhost:4000/"
 
 
 def main():
-    """Using CLI token with LiteLLM SDK"""
+    """Run the main CLI token functionality with LiteLLM SDK.
+    
+    This function initializes the CLI token process by retrieving the API key
+    using `litellm.get_litellm_gateway_api_key()`. If no token is found, it
+    prompts the user to log in. Upon successful retrieval, it fetches the
+    available models from the LiteLLM service and displays them. Finally, it
+    attempts to generate a response using a specified model and prints the  result
+    or any encountered errors.
+    """
     print("🚀 Using CLI Token with LiteLLM SDK")
     print("=" * 40)
     #litellm._turn_on_debug()
