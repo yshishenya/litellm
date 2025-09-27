@@ -90,6 +90,11 @@ services:
       - GF_SERVER_DOMAIN=dash.pro-4.ru
       - GF_SERVER_ROOT_URL=https://dash.pro-4.ru/
       - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      # Plugin management permissions
+      - GF_PLUGINS_PLUGIN_ADMIN_ENABLED=true
+      - GF_PLUGINS_PLUGIN_ADMIN_EXTERNAL_MANAGE_ENABLED=true
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=true
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
     restart: always
     depends_on:
       - prometheus
