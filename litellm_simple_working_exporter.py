@@ -101,7 +101,7 @@ class LiteLLMMetricsExporter:
         self.connect_to_db()
 
     def connect_to_db(self):
-        """Connect to PostgreSQL database"""
+        """Connect to PostgreSQL database."""
         try:
             self.connection = psycopg2.connect(
                 host=DB_HOST,
@@ -117,7 +117,7 @@ class LiteLLMMetricsExporter:
             raise
 
     def execute_query(self, query, params=None):
-        """Execute query with error handling"""
+        """Execute a SQL query with error handling."""
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute(query, params)
@@ -129,7 +129,17 @@ class LiteLLMMetricsExporter:
             return []
 
     def export_core_metrics(self):
-        """Export new records to Counter metrics since last export"""
+        """Export new records to Counter metrics since last export.
+        
+        This function queries the database for new records in the "LiteLLM_SpendLogs"
+        table since the last export time. It processes the results to increment various
+        metrics, including spend, request counts, and token counts, based on the
+        retrieved data. Finally, it updates the last export time to the current
+        datetime.
+        
+        Args:
+            self: The instance of the class containing the method.
+        """
         logger.info("Exporting counter metrics...")
         
         # Query for new records since last export
@@ -187,7 +197,7 @@ class LiteLLMMetricsExporter:
         self.last_export_time = datetime.now()
 
     def export_time_patterns(self):
-        """Export time-based usage patterns"""
+        """Export time-based usage patterns."""
         logger.info("Exporting time patterns...")
         
         litellm_requests_by_time_total._metrics.clear()
@@ -224,7 +234,7 @@ class LiteLLMMetricsExporter:
             ).set(float(row['request_count']))
 
     def export_performance_metrics(self):
-        """Export performance metrics"""
+        """Export performance metrics."""
         logger.info("Exporting performance metrics...")
         
         litellm_request_duration_seconds._metrics.clear()
@@ -270,7 +280,7 @@ class LiteLLMMetricsExporter:
                 litellm_tokens_per_second.labels(**labels).set(float(tokens_per_sec))
 
     def export_team_budget_metrics(self):
-        """Export team budget status metrics"""
+        """Export team budget status metrics."""
         logger.info("Exporting team budget metrics...")
         
         litellm_team_budget_usd._metrics.clear()
@@ -306,7 +316,7 @@ class LiteLLMMetricsExporter:
                 litellm_team_budget_usd.labels(team_id=team_id, team_alias=team_alias, metric_type='usage_percent').set(usage_percent)
 
     def export_cost_efficiency_metrics(self):
-        """Export cost efficiency metrics"""
+        """Export cost efficiency metrics."""
         logger.info("Exporting cost efficiency metrics...")
         
         litellm_cost_efficiency._metrics.clear()
@@ -359,7 +369,7 @@ class LiteLLMMetricsExporter:
                     litellm_cost_efficiency.labels(**labels, metric_type='tokens_per_dollar').set(tokens_per_dollar)
 
     def export_all_metrics(self):
-        """Export all metrics"""
+        """Export all metrics."""
         start_time = time.time()
         logger.info("=== Starting metrics export ===")
         
@@ -385,7 +395,7 @@ class LiteLLMMetricsExporter:
                 pass
 
     def run(self):
-        """Main loop"""
+        """Main loop for exporting metrics."""
         logger.info("============================================================")
         logger.info("🚀 STARTING SIMPLE WORKING LiteLLM METRICS EXPORTER")
         logger.info(f"📊 Metrics server: http://localhost:{METRICS_PORT}/metrics")
