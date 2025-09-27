@@ -78,7 +78,7 @@ services:
       retries: 3
 
   grafana:
-    image: grafana/grafana-oss
+    image: grafana/grafana-oss:11.3.1
     ports:
       - "0.0.0.0:3098:3000"
     volumes:
@@ -96,11 +96,20 @@ services:
       - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=true
       # Support for legacy Angular plugins (if needed)
       - GF_PLUGINS_ANGULAR_DETECTION_MODE=detect
-      # Feature toggles for new UI features and navigation  
-      - GF_FEATURE_TOGGLES_ENABLE=angularDeprecationUI,newNavigation,topnav,breadcrumbs,pluginCatalogFilter,newDashboardSharingComponent,externalCorePlugins
+      # Feature toggles for UI features and navigation (for Grafana 11.3.1)
+      - GF_FEATURE_TOGGLES_ENABLE=pluginCatalogFilter,newDashboardSharingComponent,externalCorePlugins
       # Plugin API endpoints configuration
       - GF_PLUGINS_ENABLE_ALPHA=true
       - GF_UNIFIED_ALERTING_ENABLED=true
+      # Plugin catalog and marketplace settings (based on community solutions)
+      - GF_PLUGINS_PLUGIN_MARKETPLACE=true
+      - GF_PLUGINS_CATALOG_ENABLED=true
+      - GF_INSTALL_CATALOG_API_URL=https://grafana.com/api/plugins
+      - GF_PLUGINS_GRAFANA_NET_API_URL=https://grafana.com/api/grafana
+      # Additional settings to fix plugin catalog visibility issues
+      - GF_PLUGINS_HIDE_ANGULAR_DEPRECATION=true
+      - GF_SERVER_ENABLE_GZIP=true
+      - GF_ENTERPRISE_LICENSE_VALIDATION_TYPE=none
       # Modern plugin auto-installation (replaces deprecated GF_INSTALL_PLUGINS)
       # Temporarily disabled problematic plugins
       # - GF_PLUGINS_PREINSTALL=grafana-clock-panel,grafana-worldmap-panel,grafana-stat-panel
