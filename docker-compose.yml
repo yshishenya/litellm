@@ -94,7 +94,12 @@ services:
       - GF_PLUGINS_PLUGIN_ADMIN_ENABLED=true
       - GF_PLUGINS_PLUGIN_ADMIN_EXTERNAL_MANAGE_ENABLED=true
       - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=true
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
+      # Support for legacy Angular plugins (if needed)
+      - GF_PLUGINS_ANGULAR_DETECTION_MODE=detect
+      - GF_FEATURE_TOGGLES_ENABLE=angularDeprecationUI
+      # Modern plugin auto-installation (replaces deprecated GF_INSTALL_PLUGINS)  
+      # Temporarily disabled problematic plugins
+      # - GF_PLUGINS_PREINSTALL=grafana-clock-panel,grafana-worldmap-panel,grafana-stat-panel
     restart: always
     depends_on:
       - prometheus
