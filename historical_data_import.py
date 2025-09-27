@@ -18,7 +18,7 @@ DB_PASSWORD = 'dbpassword9090'
 DB_NAME = 'litellm'
 
 def get_historical_data():
-    """Get daily aggregated data from database"""
+    """Get daily aggregated data from the database."""
     conn = psycopg2.connect(
         host=DB_HOST, port=DB_PORT, 
         user=DB_USER, password=DB_PASSWORD, 
@@ -54,7 +54,7 @@ def get_historical_data():
     return results
 
 def format_daily_summary(data):
-    """Format data into daily summary"""
+    """Format data into a daily summary of requests, spend, and teams."""
     daily_stats = defaultdict(lambda: {'requests': 0, 'spend': 0, 'teams': set()})
     
     for row in data:
@@ -70,6 +70,14 @@ def format_daily_summary(data):
     return daily_stats
 
 def main():
+    """Check historical data consistency and current Prometheus data.
+    
+    This function retrieves historical data from a database and formats a daily
+    summary for the last 10 days.  It also queries current data from Prometheus and
+    validates the historical data by checking for any gaps  in the date range. The
+    results are printed to the console, providing insights into requests, spend,
+    and  team participation over the specified period.
+    """
     print("🔍 Checking historical data consistency...")
     
     # Get data from database
