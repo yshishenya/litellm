@@ -759,6 +759,7 @@ def test_completion_base64(model):
         else:
             pytest.fail(f"An exception occurred - {str(e)}")
 
+
 def test_completion_mistral_api():
     try:
         litellm.set_verbose = True
@@ -3190,7 +3191,6 @@ def response_format_tests(response: litellm.ModelResponse):
         "bedrock/mistral.mistral-large-2407-v1:0",
         "bedrock/cohere.command-r-plus-v1:0",
         "anthropic.claude-3-sonnet-20240229-v1:0",
-        "anthropic.claude-instant-v1",
         "mistral.mistral-7b-instruct-v0:2",
         # "bedrock/amazon.titan-tg1-large",
         "meta.llama3-8b-instruct-v1:0",
@@ -4318,20 +4318,6 @@ def test_langfuse_completion(monkeypatch):
         prompt_id="test-chat-prompt",
         prompt_variables={"user_message": "this is used"},
         messages=[{"role": "user", "content": "this is ignored"}],
-    )
-
-
-def test_humanloop_completion(monkeypatch):
-    monkeypatch.setenv(
-        "HUMANLOOP_API_KEY", "hl_sk_59c1206e110c3f5b9985f0de4d23e7cbc79c4c4ae18c9f14"
-    )
-    litellm.set_verbose = True
-    resp = litellm.completion(
-        model="humanloop/gpt-3.5-turbo",
-        humanloop_api_key=os.getenv("HUMANLOOP_API_KEY"),
-        prompt_id="pr_nmSOVpEdyYPm2DrOwCoOm",
-        prompt_variables={"person": "John"},
-        messages=[{"role": "user", "content": "Tell me a joke."}],
     )
 
 

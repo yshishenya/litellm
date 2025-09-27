@@ -451,6 +451,8 @@ class TestOpenAIGPT4OAudioTranscription(BaseLLMAudioTranscriptionTest):
     def get_base_audio_transcription_call_args(self) -> dict:
         return {
             "model": "openai/gpt-4o-transcribe",
+            # "response_format": "verbose_json",
+            "timestamp_granularities": ["word"],
         }
 
     def get_custom_llm_provider(self) -> litellm.LlmProviders:
@@ -655,6 +657,7 @@ def test_openai_tool_calling():
 
     response = litellm.completion(**completion_params)
 
+
 @pytest.mark.asyncio
 async def test_openai_gpt5_reasoning():
     response = await litellm.acompletion(
@@ -670,7 +673,7 @@ async def test_openai_gpt5_reasoning():
 async def test_openai_safety_identifier_parameter():
     """Test that safety_identifier parameter is correctly passed to the OpenAI API."""
     from openai import AsyncOpenAI
-    
+
     litellm.set_verbose = True
     client = AsyncOpenAI(api_key="fake-api-key")
 
@@ -699,7 +702,7 @@ async def test_openai_safety_identifier_parameter():
 def test_openai_safety_identifier_parameter_sync():
     """Test that safety_identifier parameter is correctly passed to the OpenAI API."""
     from openai import OpenAI
-    
+
     litellm.set_verbose = True
     client = OpenAI(api_key="fake-api-key")
 

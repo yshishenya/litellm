@@ -17,6 +17,7 @@ from typing import (
     TYPE_CHECKING,
 )
 from litellm.types.integrations.datadog_llm_obs import DatadogLLMObsInitParams
+from litellm.types.integrations.datadog import DatadogInitParams
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.caching.caching import Cache, DualCache, RedisCache, InMemoryCache
 from litellm.caching.llm_caching_handler import LLMClientCache
@@ -60,6 +61,7 @@ from litellm.constants import (
     empower_models,
     together_ai_models,
     baseten_models,
+    WANDB_MODELS,
     REPEATED_STREAMING_CHUNK_LIMIT,
     request_timeout,
     open_ai_embedding_models,
@@ -67,6 +69,7 @@ from litellm.constants import (
     bedrock_embedding_models,
     known_tokenizer_config,
     BEDROCK_INVOKE_PROVIDERS_LITERAL,
+    BEDROCK_EMBEDDING_PROVIDERS_LITERAL,
     BEDROCK_CONVERSE_MODELS,
     DEFAULT_MAX_TOKENS,
     DEFAULT_SOFT_BUDGET,
@@ -87,6 +90,7 @@ from litellm.types.proxy.management_endpoints.ui_sso import (
     LiteLLM_UpperboundKeyGenerateParams,
 )
 from litellm.types.utils import StandardKeyGenerationConfig, LlmProviders
+from litellm.types.utils import PriorityReservationSettings
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils.logging_callback_manager import LoggingCallbackManager
 import httpx
@@ -116,6 +120,7 @@ _custom_logger_compatible_callbacks_literal = Literal[
     "logfire",
     "literalai",
     "dynamic_rate_limiter",
+    "dynamic_rate_limiter_v3",
     "langsmith",
     "prometheus",
     "otel",
@@ -146,8 +151,13 @@ _custom_logger_compatible_callbacks_literal = Literal[
     "aws_sqs",
     "vector_store_pre_call_hook",
     "dotprompt",
+    "bitbucket",
+    "cloudzero",
+    "posthog",
 ]
-configured_cold_storage_logger: Optional[_custom_logger_compatible_callbacks_literal] = None
+configured_cold_storage_logger: Optional[
+    _custom_logger_compatible_callbacks_literal
+] = None
 logged_real_time_event_types: Optional[Union[List[str], Literal["*"]]] = None
 _known_custom_logger_compatible_callbacks: List = list(
     get_args(_custom_logger_compatible_callbacks_literal)
@@ -236,7 +246,10 @@ novita_api_key: Optional[str] = None
 snowflake_key: Optional[str] = None
 gradient_ai_api_key: Optional[str] = None
 nebius_key: Optional[str] = None
+wandb_key: Optional[str] = None
+heroku_key: Optional[str] = None
 cometapi_key: Optional[str] = None
+ovhcloud_key: Optional[str] = None
 common_cloud_provider_auth_params: dict = {
     "params": ["project", "region_name", "token"],
     "providers": ["vertex_ai", "bedrock", "watsonx", "azure", "vertex_ai_beta"],
@@ -332,6 +345,7 @@ suppress_debug_info = False
 dynamodb_table_name: Optional[str] = None
 s3_callback_params: Optional[Dict] = None
 datadog_llm_observability_params: Optional[Union[DatadogLLMObsInitParams, Dict]] = None
+datadog_params: Optional[Union[DatadogInitParams, Dict]] = None
 aws_sqs_callback_params: Optional[Dict] = None
 generic_logger_headers: Optional[Dict] = None
 default_key_generate_params: Optional[Dict] = None
@@ -363,6 +377,7 @@ public_model_groups: Optional[List[str]] = None
 public_model_groups_links: Dict[str, str] = {}
 #### REQUEST PRIORITIZATION ######
 priority_reservation: Optional[Dict[str, float]] = None
+priority_reservation_settings: "PriorityReservationSettings" = PriorityReservationSettings()
 
 
 ######## Networking Settings ########
@@ -435,7 +450,8 @@ config_path = None
 vertex_ai_safety_settings: Optional[dict] = None
 
 ####### COMPLETION MODELS ###################
-from typing import Set  
+from typing import Set
+
 open_ai_chat_completion_models: Set = set()
 open_ai_text_completion_models: Set = set()
 cohere_models: Set = set()
@@ -478,6 +494,7 @@ azure_ai_models: Set = set()
 jina_ai_models: Set = set()
 voyage_models: Set = set()
 infinity_models: Set = set()
+heroku_models: Set = set() 
 databricks_models: Set = set()
 cloudflare_models: Set = set()
 codestral_models: Set = set()
@@ -513,6 +530,10 @@ recraft_models: Set = set()
 cometapi_models: Set = set()
 oci_models: Set = set()
 vercel_ai_gateway_models: Set = set()
+volcengine_models: Set = set()
+wandb_models: Set = set(WANDB_MODELS)
+ovhcloud_models: Set = set()
+ovhcloud_embedding_models: Set = set()
 
 
 def is_bedrock_pricing_only_model(key: str) -> bool:
@@ -705,6 +726,8 @@ def add_known_models():
             deepgram_models.add(key)
         elif value.get("litellm_provider") == "elevenlabs":
             elevenlabs_models.add(key)
+        elif value.get("litellm_provider") == "heroku":
+            heroku_models.add(key)
         elif value.get("litellm_provider") == "dashscope":
             dashscope_models.add(key)
         elif value.get("litellm_provider") == "moonshot":
@@ -723,6 +746,14 @@ def add_known_models():
             cometapi_models.add(key)
         elif value.get("litellm_provider") == "oci":
             oci_models.add(key)
+        elif value.get("litellm_provider") == "volcengine":
+            volcengine_models.add(key)
+        elif value.get("litellm_provider") == "wandb":
+            wandb_models.add(key)
+        elif value.get("litellm_provider") == "ovhcloud":
+            ovhcloud_models.add(key)
+        elif value.get("litellm_provider") == "ovhcloud-embedding-models":
+            ovhcloud_embedding_models.add(key)
 
 
 add_known_models()
@@ -814,7 +845,11 @@ model_list = list(
     | recraft_models
     | cometapi_models
     | oci_models
+    | heroku_models
     | vercel_ai_gateway_models
+    | volcengine_models
+    | wandb_models
+    | ovhcloud_models
 )
 
 model_list_set = set(model_list)
@@ -835,7 +870,12 @@ models_by_provider: dict = {
     "openrouter": openrouter_models,
     "vercel_ai_gateway": vercel_ai_gateway_models,
     "datarobot": datarobot_models,
-    "vertex_ai": vertex_chat_models | vertex_text_models | vertex_anthropic_models | vertex_vision_models | vertex_language_models | vertex_deepseek_models,
+    "vertex_ai": vertex_chat_models
+    | vertex_text_models
+    | vertex_anthropic_models
+    | vertex_vision_models
+    | vertex_language_models
+    | vertex_deepseek_models,
     "ai21": ai21_models,
     "bedrock": bedrock_models | bedrock_converse_models,
     "petals": petals_models,
@@ -880,6 +920,7 @@ models_by_provider: dict = {
     "featherless_ai": featherless_ai_models,
     "deepgram": deepgram_models,
     "elevenlabs": elevenlabs_models,
+    "heroku": heroku_models,
     "dashscope": dashscope_models,
     "moonshot": moonshot_models,
     "v0": v0_models,
@@ -889,6 +930,9 @@ models_by_provider: dict = {
     "recraft": recraft_models,
     "cometapi": cometapi_models,
     "oci": oci_models,
+    "volcengine": volcengine_models,
+    "wandb": wandb_models,
+    "ovhcloud": ovhcloud_models | ovhcloud_embedding_models,
 }
 
 # mapping for those models which have larger equivalents
@@ -923,6 +967,7 @@ all_embedding_models = (
     | fireworks_ai_embedding_models
     | nebius_embedding_models
     | sambanova_embedding_models
+    | ovhcloud_embedding_models
 )
 
 ####### IMAGE GENERATION MODELS ###################
@@ -993,6 +1038,7 @@ from .llms.openai_like.chat.handler import OpenAILikeChatConfig
 from .llms.aiohttp_openai.chat.transformation import AiohttpOpenAIChatConfig
 from .llms.galadriel.chat.transformation import GaladrielChatConfig
 from .llms.github.chat.transformation import GithubChatConfig
+from .llms.compactifai.chat.transformation import CompactifAIChatConfig
 from .llms.empower.chat.transformation import EmpowerChatConfig
 from .llms.huggingface.chat.transformation import HuggingFaceChatConfig
 from .llms.huggingface.embedding.transformation import HuggingFaceEmbeddingConfig
@@ -1013,7 +1059,6 @@ from .llms.databricks.chat.transformation import DatabricksConfig
 from .llms.databricks.embed.transformation import DatabricksEmbeddingConfig
 from .llms.predibase.chat.transformation import PredibaseConfig
 from .llms.replicate.chat.transformation import ReplicateConfig
-from .llms.cohere.completion.transformation import CohereTextConfig as CohereConfig
 from .llms.snowflake.chat.transformation import SnowflakeConfig
 from .llms.cohere.rerank.transformation import CohereRerankConfig
 from .llms.cohere.rerank_v2.transformation import CohereRerankV2Config
@@ -1132,7 +1177,9 @@ from .llms.topaz.image_variations.transformation import TopazImageVariationConfi
 from litellm.llms.openai.completion.transformation import OpenAITextCompletionConfig
 from .llms.groq.chat.transformation import GroqChatConfig
 from .llms.voyage.embedding.transformation import VoyageEmbeddingConfig
-from .llms.voyage.embedding.transformation_contextual import VoyageContextualEmbeddingConfig
+from .llms.voyage.embedding.transformation_contextual import (
+    VoyageContextualEmbeddingConfig,
+)
 from .llms.infinity.embedding.transformation import InfinityEmbeddingConfig
 from .llms.azure_ai.chat.transformation import AzureAIStudioConfig
 from .llms.mistral.chat.transformation import MistralConfig
@@ -1196,12 +1243,15 @@ from .llms.jina_ai.embedding.transformation import JinaAIEmbeddingConfig
 from .llms.xai.chat.transformation import XAIChatConfig
 from .llms.xai.common_utils import XAIModelInfo
 from .llms.aiml.chat.transformation import AIMLChatConfig
-from .llms.volcengine import VolcEngineConfig
+from .llms.volcengine.chat.transformation import (
+    VolcEngineChatConfig as VolcEngineConfig,
+)
 from .llms.codestral.completion.transformation import CodestralTextCompletionConfig
 from .llms.azure.azure import (
     AzureOpenAIError,
     AzureOpenAIAssistantsAPIConfig,
 )
+from .llms.heroku.chat.transformation import HerokuChatConfig
 from .llms.cometapi.chat.transformation import CometAPIConfig
 from .llms.azure.chat.gpt_transformation import AzureOpenAIConfig
 from .llms.azure.chat.gpt_5_transformation import AzureOpenAIGPT5Config
@@ -1221,6 +1271,7 @@ from .llms.watsonx.chat.transformation import IBMWatsonXChatConfig
 from .llms.watsonx.embed.transformation import IBMWatsonXEmbeddingConfig
 from .llms.github_copilot.chat.transformation import GithubCopilotConfig
 from .llms.nebius.chat.transformation import NebiusConfig
+from .llms.wandb.chat.transformation import WandbConfig
 from .llms.dashscope.chat.transformation import DashScopeChatConfig
 from .llms.moonshot.chat.transformation import MoonshotChatConfig
 from .llms.v0.chat.transformation import V0ChatConfig
@@ -1229,6 +1280,8 @@ from .llms.morph.chat.transformation import MorphChatConfig
 from .llms.lambda_ai.chat.transformation import LambdaAIChatConfig
 from .llms.hyperbolic.chat.transformation import HyperbolicChatConfig
 from .llms.vercel_ai_gateway.chat.transformation import VercelAIGatewayConfig
+from .llms.ovhcloud.chat.transformation import OVHCloudChatConfig
+from .llms.ovhcloud.embedding.transformation import OVHCloudEmbeddingConfig
 from .main import *  # type: ignore
 from .integrations import *
 from .llms.custom_httpx.async_client_cleanup import close_litellm_async_clients
@@ -1295,5 +1348,16 @@ disable_hf_tokenizer_download: Optional[bool] = (
 )
 global_disable_no_log_param: bool = False
 
+### CLI UTILITIES ###
+from litellm.litellm_core_utils.cli_token_utils import get_litellm_gateway_api_key
+
 ### PASSTHROUGH ###
 from .passthrough import allm_passthrough_route, llm_passthrough_route
+
+### GLOBAL CONFIG ###
+global_bitbucket_config: Optional[Dict[str, Any]] = None
+
+def set_global_bitbucket_config(config: Dict[str, Any]) -> None:
+    """Set global BitBucket configuration for prompt management."""
+    global global_bitbucket_config
+    global_bitbucket_config = config

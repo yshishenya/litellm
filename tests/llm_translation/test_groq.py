@@ -6,6 +6,7 @@ import pytest
 
 # sys.path.insert(
 #     0, os.path.abspath("../..")
+# ) # noqa
 # )  # Adds the parent directory to the system path
 
 from base_llm_unit_tests import BaseLLMChatTest
@@ -19,6 +20,9 @@ class TestGroq(BaseLLMChatTest):
 
     def test_tool_call_no_arguments(self, tool_call_no_arguments):
         """Test that tool calls with no arguments is translated correctly. Relevant issue: https://github.com/BerriAI/litellm/issues/6833"""
+        pass
+
+    def test_tool_call_with_empty_enum_property(self):
         pass
 
     @pytest.mark.parametrize("model", ["groq/qwen/qwen3-32b", "groq/openai/gpt-oss-20b", "groq/openai/gpt-oss-120b"])

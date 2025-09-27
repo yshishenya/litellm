@@ -280,6 +280,7 @@ class RequestBody(TypedDict, total=False):
     safetySettings: List[SafetSettingsConfig]
     generationConfig: GenerationConfig
     cachedContent: str
+    labels: Dict[str, str]
     speechConfig: SpeechConfig
 
 
@@ -552,6 +553,10 @@ class OutputConfig(TypedDict, total=False):
     gcsDestination: GcsDestination
 
 
+class OutputInfo(TypedDict, total=False):
+    gcsOutputDirectory: str
+
+
 class GcsBucketResponse(TypedDict):
     """
     TypedDict for GCS bucket upload response
@@ -610,6 +615,7 @@ class VertexBatchPredictionResponse(TypedDict, total=False):
     model: str
     inputConfig: InputConfig
     outputConfig: OutputConfig
+    outputInfo: OutputInfo
     state: str
     createTime: str
     updateTime: str
