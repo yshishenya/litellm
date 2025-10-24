@@ -11,7 +11,7 @@ services:
       - ./config.yaml:/app/config.yaml
     command:
       - "--config=/app/config.yaml"
-    ##############################################
+
     ports:
       - "4000:4000" # Map the container port to the host, accessible from all interfaces
     environment:
