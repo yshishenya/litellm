@@ -46,6 +46,14 @@ class _ENTERPRISE_OpenAI_Moderation(CustomLogger):
             "anthropic_messages",
         ],
     ):
+        """Asynchronously processes moderation hooks for user messages.
+        
+        This function extracts content from a list of messages in the provided  data
+        dictionary and sends it to a moderation service via the llm_router.  If the
+        moderation response indicates that the content violates safety  policies, an
+        HTTPException is raised. The function relies on the  llm_router for moderation
+        and logs the response for debugging purposes.
+        """
         text = ""
         if "messages" in data and isinstance(data["messages"], list):
             for m in data["messages"]:  # assume messages is a list
