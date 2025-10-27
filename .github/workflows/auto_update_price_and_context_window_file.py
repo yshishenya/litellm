@@ -4,6 +4,7 @@ import json
 
 # Asynchronously fetch data from a given URL
 async def fetch_data(url):
+    """Asynchronously fetch data from a given URL."""
     try:
         # Create an asynchronous session
         async with aiohttp.ClientSession() as session:
@@ -24,6 +25,7 @@ async def fetch_data(url):
 # Synchronize local data with remote data
 def sync_local_data_with_remote(local_data, remote_data):
     # Update existing keys in local_data with values from remote_data
+    """Synchronize local data with remote data."""
     for key in (set(local_data) & set(remote_data)):
         local_data[key].update(remote_data[key])
 
@@ -33,6 +35,7 @@ def sync_local_data_with_remote(local_data, remote_data):
 
 # Write data to the json file
 def write_to_file(file_path, data):
+    """Write data to a JSON file."""
     try:
         # Open the file in write mode
         with open(file_path, "w") as file:
@@ -45,6 +48,19 @@ def write_to_file(file_path, data):
 
 # Update the existing models and add the missing models for OpenRouter
 def transform_openrouter_data(data):
+    """Transform OpenRouter data into a structured format.
+    
+    This function processes a list of data entries from OpenRouter, extracting
+    relevant fields and transforming them into a standardized dictionary format. It
+    adds fields such as 'max_tokens', 'input_cost_per_token', and conditionally
+    includes 'max_output_tokens' and 'input_cost_per_image' based on the input
+    data. Additionally, it sets provider-specific fields and checks for modality to
+    determine support for vision capabilities. The transformed data is stored using
+    a composite key.
+    
+    Args:
+        data (list): A list of dictionaries containing OpenRouter data entries.
+    """
     transformed = {}
     for row in data:
         # Add the fields 'max_tokens' and 'input_cost_per_token'
@@ -83,6 +99,17 @@ def transform_openrouter_data(data):
 
 # Update the existing models and add the missing models for Vercel AI Gateway
 def transform_vercel_ai_gateway_data(data):
+    """Transform Vercel AI Gateway data into a structured format.
+    
+    This function processes a list of data entries from the Vercel AI Gateway,
+    extracting relevant pricing and token information. It constructs a dictionary
+    for each entry, including fields such as max_tokens, input_cost_per_token,  and
+    mode, while also handling optional cache pricing if available. The  resulting
+    dictionary is keyed by a unique identifier for each entry.
+    
+    Args:
+        data (list): A list of dictionaries containing Vercel AI Gateway data.
+    """
     transformed = {}
     for row in data:
         obj = {
@@ -112,6 +139,7 @@ def transform_vercel_ai_gateway_data(data):
 
 # Load local data from a specified file
 def load_local_data(file_path):
+    """Load local data from a specified JSON file."""
     try:
         # Open the file in read mode
         with open(file_path, "r") as file:

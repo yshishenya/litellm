@@ -4,6 +4,17 @@ from github import Github
 
 
 def interpret_results(csv_file):
+    """Interpret results from a CSV file and generate a Markdown table.
+    
+    This function reads a CSV file containing performance metrics, adds a new
+    column "Status" based on the median and average response times, and  constructs
+    a Markdown table. The "Status" is determined by checking if  both the median
+    and average response times are below 300 and the failure  percentage is less
+    than 5%. The resulting table is ordered by specific  columns and printed.
+    
+    Args:
+        csv_file (str): The path to the CSV file containing the performance data.
+    """
     with open(csv_file, newline="") as csvfile:
         csvreader = csv.DictReader(csvfile)
         rows = list(csvreader)
@@ -53,6 +64,7 @@ def interpret_results(csv_file):
 
 
 def _get_docker_run_command_stable_release(release_version):
+    """Generate a Docker run command for the LiteLLM proxy."""
     return f"""
 \n\n
 ## Docker Run LiteLLM Proxy
@@ -67,6 +79,7 @@ ghcr.io/berriai/litellm:litellm_stable_release_branch-{release_version}
 
 
 def _get_docker_run_command(release_version):
+    """Generate a Docker run command for LiteLLM Proxy."""
     return f"""
 \n\n
 ## Docker Run LiteLLM Proxy
@@ -81,6 +94,7 @@ ghcr.io/berriai/litellm:main-{release_version}
 
 
 def get_docker_run_command(release_version):
+    """Generate the Docker run command based on the release version."""
     if "stable" in release_version:
         return _get_docker_run_command_stable_release(release_version)
     else:

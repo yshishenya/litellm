@@ -6,6 +6,7 @@ class MyUser(HttpUser):
 
     @task
     def chat_completion(self):
+        """Sends a chat completion request to the API."""
         headers = {
             "Content-Type": "application/json",
             "Authorization": "Bearer sk-8N1tLOOyH8TIxwOLahhIVg",
