@@ -151,8 +151,10 @@ volumes:
   prometheus_data:
     driver: local
   postgres_data:
-    name: litellm_postgres_data # Named volume for Postgres data persistence
+    name: litellm_postgres_data_external # External volume - NOT deleted by 'down -v'
+    external: true
   redis_data:
     driver: local
   grafana_data:
-    driver: local
+    name: litellm_grafana_data_external # External volume - NOT deleted by 'down -v'
+    external: true
