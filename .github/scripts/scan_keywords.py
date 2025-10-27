@@ -15,6 +15,17 @@ def read_event_payload() -> dict:
 
 
 def get_issue_text(event: dict) -> tuple[str, str, int, str, str]:
+    """def get_issue_text(event: dict) -> tuple[str, str, int, str, str]:
+    Extracts issue details from a given event dictionary.  This function retrieves
+    the title, body, number, HTML URL, and author  login from the 'issue' key
+    within the provided event dictionary. It  ensures that each piece of
+    information is stripped of leading and  trailing whitespace and provides
+    default values for missing data.  The function returns these details as a
+    tuple.
+    
+    Args:
+        event (dict): A dictionary containing event data, expected to have
+            an 'issue' key with relevant information."""
     issue = event.get("issue") or {}
     title = (issue.get("title") or "").strip()
     body = (issue.get("body") or "").strip()
@@ -25,6 +36,19 @@ def get_issue_text(event: dict) -> tuple[str, str, int, str, str]:
 
 
 def detect_keywords(text: str, keywords: list[str]) -> list[str]:
+    """Detects and returns unique keywords found in the given text.
+    
+    This function processes the input `text` by converting it to lowercase  and
+    then checks for the presence of each keyword from the `keywords` list.  It
+    strips whitespace from each keyword and ensures that only non-empty  keywords
+    are considered. The function collects matches while preserving  their original
+    order and removes any duplicates before returning the  final list of unique
+    keywords.
+    
+    Args:
+        text (str): The text in which to search for keywords.
+        keywords (list[str]): A list of keywords to search for in the text.
+    """
     lowered = text.lower()
     matches = []
     for keyword in keywords:
