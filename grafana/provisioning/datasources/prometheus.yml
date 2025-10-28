@@ -13,3 +13,16 @@ datasources:
     url: http://prometheus:9090
     isDefault: false
     editable: false
+  - name: postgres
+    type: postgres
+    access: proxy
+    url: db:5432
+    database: litellm
+    user: llmproxy
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1500
+      timescaledb: false
+    secureJsonData:
+      password: dbpassword9090
