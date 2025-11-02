@@ -98,3 +98,10 @@ litellm_config.yaml
 litellm/proxy/to_delete_loadtest_work/*
 update_model_cost_map.py
 backups/
+
+# Migration logs
+migration*.log
+*.log
+
+# Temporary files
+FINAL_MIGRATION_REPORT.txt
