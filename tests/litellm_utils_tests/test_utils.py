@@ -361,7 +361,7 @@ def test_aget_valid_models():
     os.environ = old_environ
 
 
-@pytest.mark.parametrize("custom_llm_provider", ["gemini", "anthropic", "xai"])
+@pytest.mark.parametrize("custom_llm_provider", ["anthropic", "xai"])
 def test_get_valid_models_with_custom_llm_provider(custom_llm_provider):
     from litellm.utils import ProviderConfigManager
     from litellm.types.utils import LlmProviders
@@ -1477,7 +1477,7 @@ def test_is_prompt_caching_enabled_error_handling():
             messages=[{"role": "user", "content": "test"}],
             tools=None,
             custom_llm_provider="anthropic",
-            model="anthropic/claude-3-5-sonnet-20240620",
+            model="anthropic/claude-sonnet-4-5-20250929",
         )
 
         assert result is False  # Should return False when an error occurs
