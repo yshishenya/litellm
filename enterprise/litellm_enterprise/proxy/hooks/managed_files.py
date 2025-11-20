@@ -817,6 +817,7 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
     ) -> OpenAIFileObject:
 
         # file_id = convert_b64_uid_to_unified_uid(file_id)
+        """Deletes a file associated with the given file_id."""
         model_file_id_mapping = await self.get_model_file_id_mapping(
             [file_id], litellm_parent_otel_span
         )
@@ -842,8 +843,14 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
         llm_router: Router,
         **data: Dict,
     ) -> "HttpxBinaryResponseContent":
-        """
-        Get the content of a file from first model that has it
+        """Get the content of a file from the first model that has it.
+        
+        This asynchronous function retrieves the content of a specified file using its
+        identifier. It first attempts to obtain a mapping of model file IDs, either
+        from  the provided data or by calling the `get_model_file_id_mapping` method.
+        If a  specific mapping for the given `file_id` is found, it iterates through
+        the models  to fetch the file content. If any errors occur during this process,
+        they are  collected and raised in a consolidated exception.
         """
         model_file_id_mapping = data.pop("model_file_id_mapping", None)
         model_file_id_mapping = (
