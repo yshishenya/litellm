@@ -812,11 +812,7 @@ async def acancel_batch(
     extra_body: Optional[Dict[str, str]] = None,
     **kwargs,
 ) -> Batch:
-    """
-    Async: Cancels a batch.
-
-    LiteLLM Equivalent of POST https://api.openai.com/v1/batches/{batch_id}/cancel
-    """
+    """Cancels a batch asynchronously."""
     try:
         loop = asyncio.get_event_loop()
         kwargs["acancel_batch"] = True
@@ -856,10 +852,28 @@ def cancel_batch(
     extra_body: Optional[Dict[str, str]] = None,
     **kwargs,
 ) -> Union[Batch, Coroutine[Any, Any, Batch]]:
-    """
-    Cancels a batch.
-
-    LiteLLM Equivalent of POST https://api.openai.com/v1/batches/{batch_id}/cancel
+    """Cancel a batch using the specified model and provider.
+    
+    This function sends a request to cancel a batch identified by the given
+    batch_id. It determines the appropriate LLM provider (OpenAI or Azure) based on
+    the provided parameters and constructs the necessary request. The function also
+    handles timeout settings and retries, ensuring robust error handling and
+    logging throughout the process.
+    
+    Args:
+        batch_id (str): The ID of the batch to be canceled.
+        model (Optional[str]): The model to use for the cancellation request.
+        custom_llm_provider (Union[Literal["openai", "azure"], str]): The LLM provider to use, defaulting to "openai".
+        metadata (Optional[Dict[str, str]]): Additional metadata for the request.
+        extra_headers (Optional[Dict[str, str]]): Extra headers to include in the request.
+        extra_body (Optional[Dict[str, str]]): Extra body parameters for the request.
+        **kwargs: Additional parameters for customization.
+    
+    Returns:
+        Union[Batch, Coroutine[Any, Any, Batch]]: The response from the cancellation request.
+    
+    Raises:
+        litellm.exceptions.BadRequestError: If an unsupported LLM provider is specified.
     """
     try:
 
@@ -989,16 +1003,19 @@ def cancel_batch(
 def _handle_async_invoke_status(
     batch_id: str, aws_region_name: str, logging_obj=None, **kwargs
 ) -> "LiteLLMBatch":
-    """
-    Handle async invoke status check for AWS Bedrock.
-
+    """Handle async invoke status check for AWS Bedrock.
+    
+    This function checks the status of an asynchronous invoke job in AWS Bedrock
+    by creating an instance of the BedrockEmbedding handler. It retrieves the
+    status information using the provided batch_id and aws_region_name, and
+    transforms the response into a LiteLLMBatch object. The function runs
+    asynchronously within a thread to avoid event loop conflicts.
+    
     Args:
-        batch_id: The async invoke ARN
-        aws_region_name: AWS region name
-        **kwargs: Additional parameters
-
-    Returns:
-        dict: Status information including status, output_file_id (S3 URL), etc.
+        batch_id: The async invoke ARN.
+        aws_region_name: AWS region name.
+        logging_obj: Optional logging object for tracking.
+        **kwargs: Additional parameters.
     """
     import asyncio
 
@@ -1006,6 +1023,15 @@ def _handle_async_invoke_status(
 
     async def _async_get_status():
         # Create embedding handler instance
+        """Retrieve the status of an asynchronous invoke job.
+        
+        This function creates an instance of BedrockEmbedding to fetch the  status of
+        an async invoke job using the provided batch ID and AWS  region. It then
+        transforms the response into a LiteLLMBatch object,  encapsulating details such
+        as invocation ARN, status, timestamps,  and request counts. The function also
+        handles the extraction of  metadata from the response, including output file
+        information and  any failure messages.
+        """
         embedding_handler = BedrockEmbedding()
 
         # Get the status of the async invoke job
