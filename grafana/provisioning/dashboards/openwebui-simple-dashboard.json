@@ -50,7 +50,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  SUM(sl.spend) as total_spend\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  SUM(sl.spend) as total_spend\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "fieldConfig": {
@@ -81,7 +81,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  COUNT(*) as total_requests\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  COUNT(*) as total_requests\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "fieldConfig": {
@@ -104,7 +104,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  SUM(sl.prompt_tokens) as prompt_tokens\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  SUM(sl.prompt_tokens) as prompt_tokens\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "fieldConfig": {
@@ -128,7 +128,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  SUM(sl.completion_tokens) as completion_tokens\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  SUM(sl.completion_tokens) as completion_tokens\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "fieldConfig": {
@@ -152,7 +152,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  ROUND((SUM(sl.prompt_tokens)::numeric / NULLIF(SUM(sl.completion_tokens), 0))::numeric, 2) as token_ratio\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  ROUND((SUM(sl.prompt_tokens)::numeric / NULLIF(SUM(sl.completion_tokens), 0))::numeric, 2) as token_ratio\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "fieldConfig": {
@@ -183,7 +183,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  ROUND((SUM(sl.prompt_tokens + sl.completion_tokens)::numeric / NULLIF(SUM(sl.spend), 0))::numeric, 0) as tokens_per_dollar\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  ROUND((SUM(sl.prompt_tokens + sl.completion_tokens)::numeric / NULLIF(SUM(sl.spend), 0))::numeric, 0) as tokens_per_dollar\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "fieldConfig": {
@@ -207,7 +207,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT\n  NOW() as time,\n  'prompt' as metric,\n  SUM(sl.prompt_tokens) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nUNION ALL\nSELECT\n  NOW() as time,\n  'completion' as metric,\n  SUM(sl.completion_tokens) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  NOW() as time,\n  'prompt' as metric,\n  SUM(sl.prompt_tokens) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nUNION ALL\nSELECT\n  NOW() as time,\n  'completion' as metric,\n  SUM(sl.completion_tokens) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "options": {
@@ -234,7 +234,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT\n  date_trunc('hour', sl.\"startTime\") as time,\n  'Почасовые расходы' as metric,\n  SUM(sl.spend) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY date_trunc('hour', sl.\"startTime\")\nORDER BY time"
+          "rawSql": "SELECT\n  date_trunc('hour', sl.\"startTime\") as time,\n  'Почасовые расходы' as metric,\n  SUM(sl.spend) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY date_trunc('hour', sl.\"startTime\")\nORDER BY time"
         }
       ],
       "fieldConfig": {
@@ -261,7 +261,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  ROUND((SUM(sl.spend) / NULLIF(COUNT(DISTINCT DATE(sl.\"startTime\")), 0) * 30)::numeric, 0) as monthly_forecast\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
+          "rawSql": "SELECT\n  ROUND((SUM(sl.spend) / NULLIF(COUNT(DISTINCT DATE(sl.\"startTime\")), 0) * 30)::numeric, 0) as monthly_forecast\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''"
         }
       ],
       "fieldConfig": {
@@ -300,7 +300,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  COALESCE(sl.end_user, 'unknown') as \"👤 Пользователь\",\n  ROUND(SUM(sl.spend)::numeric, 2) as \"💰 Общие расходы\",\n  ROUND((SUM(sl.spend) / SUM(SUM(sl.spend)) OVER())::numeric, 3) as \"📈 % от общих\",\n  COUNT(*) as \"📊 Всего запросов\",\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"🔢 Всего токенов\",\n  SUM(sl.prompt_tokens) as \"⬇️ Входные токены\",\n  SUM(sl.completion_tokens) as \"⬆️ Выходные токены\",\n  ROUND((SUM(sl.prompt_tokens)::numeric / NULLIF(SUM(sl.completion_tokens), 0))::numeric, 2) as \"⚖️ In/Out\",\n  ROUND((SUM(sl.prompt_tokens + sl.completion_tokens)::numeric / NULLIF(SUM(sl.spend), 0))::numeric, 0) as \"⚡ Токены за $\",\n  ROUND((SUM(sl.spend) / NULLIF(COUNT(*), 0))::numeric, 4) as \"💵 Стоимость за запрос\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user\nHAVING SUM(sl.spend) > 0\nORDER BY \"💰 Общие расходы\" DESC"
+          "rawSql": "SELECT\n  COALESCE(sl.end_user, 'unknown') as \"👤 Пользователь\",\n  ROUND(SUM(sl.spend)::numeric, 2) as \"💰 Общие расходы\",\n  ROUND((SUM(sl.spend) / SUM(SUM(sl.spend)) OVER())::numeric, 3) as \"📈 % от общих\",\n  COUNT(*) as \"📊 Всего запросов\",\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"🔢 Всего токенов\",\n  SUM(sl.prompt_tokens) as \"⬇️ Входные токены\",\n  SUM(sl.completion_tokens) as \"⬆️ Выходные токены\",\n  ROUND((SUM(sl.prompt_tokens)::numeric / NULLIF(SUM(sl.completion_tokens), 0))::numeric, 2) as \"⚖️ In/Out\",\n  ROUND((SUM(sl.prompt_tokens + sl.completion_tokens)::numeric / NULLIF(SUM(sl.spend), 0))::numeric, 0) as \"⚡ Токены за $\",\n  ROUND((SUM(sl.spend) / NULLIF(COUNT(*), 0))::numeric, 4) as \"💵 Стоимость за запрос\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user\nHAVING SUM(sl.spend) > 0\nORDER BY \"💰 Общие расходы\" DESC"
         }
       ],
       "fieldConfig": {
@@ -413,7 +413,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.spend) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.spend) > 0\nORDER BY \"Value\" DESC"
+          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.spend) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.spend) > 0\nORDER BY \"Value\" DESC"
         }
       ],
       "transformations": [
@@ -486,7 +486,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.prompt_tokens + sl.completion_tokens) > 0\nORDER BY \"Value\" DESC"
+          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.prompt_tokens + sl.completion_tokens) > 0\nORDER BY \"Value\" DESC"
         }
       ],
       "transformations": [
@@ -559,7 +559,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  COUNT(*) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING COUNT(*) > 0\nORDER BY \"Value\" DESC"
+          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  COUNT(*) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING COUNT(*) > 0\nORDER BY \"Value\" DESC"
         }
       ],
       "transformations": [
@@ -632,7 +632,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT\n  NOW() as time,\n  sl.model as metric,\n  SUM(sl.spend) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.model\nHAVING SUM(sl.spend) > 0\nORDER BY value DESC\nLIMIT 8"
+          "rawSql": "SELECT\n  NOW() as time,\n  sl.model as metric,\n  SUM(sl.spend) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.model\nHAVING SUM(sl.spend) > 0\nORDER BY value DESC\nLIMIT 8"
         }
       ],
       "options": {
@@ -659,7 +659,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT\n  NOW() as time,\n  sl.model as metric,\n  COUNT(*) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.model\nHAVING COUNT(*) > 0\nORDER BY value DESC\nLIMIT 8"
+          "rawSql": "SELECT\n  NOW() as time,\n  sl.model as metric,\n  COUNT(*) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.model\nHAVING COUNT(*) > 0\nORDER BY value DESC\nLIMIT 8"
         }
       ],
       "options": {
@@ -686,7 +686,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT\n  NOW() as time,\n  sl.model as metric,\n  SUM(sl.prompt_tokens + sl.completion_tokens) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.model\nHAVING SUM(sl.prompt_tokens + sl.completion_tokens) > 0\nORDER BY value DESC\nLIMIT 8"
+          "rawSql": "SELECT\n  NOW() as time,\n  sl.model as metric,\n  SUM(sl.prompt_tokens + sl.completion_tokens) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND sl.end_user ~ '^(${user_filter:pipe})$'\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.model\nHAVING SUM(sl.prompt_tokens + sl.completion_tokens) > 0\nORDER BY value DESC\nLIMIT 8"
         }
       ],
       "options": {
