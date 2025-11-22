@@ -600,6 +600,14 @@ def is_openai_finetune_model(key: str) -> bool:
 
 
 def add_known_models():
+    """Add known models to their respective provider collections.
+    
+    This function iterates through the `model_cost` dictionary, checking the
+    `litellm_provider` for each model. Based on the provider, it adds the model key
+    to the corresponding set of models. The function handles a wide variety of
+    providers, including OpenAI, Azure, Cohere, and many others, ensuring that
+    models are categorized correctly for further processing.
+    """
     for key, value in model_cost.items():
         if value.get("litellm_provider") == "openai" and not is_openai_finetune_model(
             key
