@@ -170,6 +170,14 @@ class AporiaGuardrail(CustomGuardrail):
         user_api_key_dict: UserAPIKeyAuth,
         call_type: CallTypesLiteral,
     ):
+        """Asynchronously processes moderation hooks based on provided data.
+        
+        This function checks if guardrails should be applied to the incoming data  and
+        processes the messages accordingly. It first verifies if the guardrail  should
+        run, then checks metadata for compatibility. If valid messages are  found, it
+        transforms and sends them to the Aporia API, while also updating  the guardrail
+        headers. If no messages are present, a warning is logged.
+        """
         from litellm.proxy.common_utils.callback_utils import (
             add_guardrail_to_applied_guardrails_header,
         )
