@@ -1,3 +1,10 @@
+general_settings:
+  user_header_mappings:
+    - header_name: X-OpenWebUI-User-Name
+      litellm_user_role: internal_user
+
+# Models are stored in database (STORE_MODEL_IN_DB=True)
+# xmodel_list below is disabled/for reference only
 xmodel_list:
   - model_name: gpt-4o
     litellm_params:
@@ -7,4 +14,3 @@ xmodel_list:
     litellm_params:
       model: anthropic/fake
       api_base: https://exampleanthropicendpoint-production.up.railway.app/
-
