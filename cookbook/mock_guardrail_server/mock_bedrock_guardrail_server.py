@@ -208,7 +208,7 @@ async def verify_bearer_token(authorization: Optional[str] = Header(None)) -> st
 
 
 def check_blocked_words(text: str) -> Optional[WordPolicy]:
-    """Check if text contains blocked words"""
+    """Check if text contains blocked words."""
     found_words = []
     text_lower = text.lower()
 
@@ -222,7 +222,7 @@ def check_blocked_words(text: str) -> Optional[WordPolicy]:
 
 
 def check_blocked_topics(text: str) -> Optional[TopicPolicy]:
-    """Check if text contains blocked topics"""
+    """Check if text contains blocked topics."""
     found_topics = []
     text_lower = text.lower()
 
@@ -238,12 +238,15 @@ def check_blocked_topics(text: str) -> Optional[TopicPolicy]:
 
 
 def check_pii(text: str) -> tuple[Optional[SensitiveInformationPolicy], str]:
-    """
-    Check for PII in text and return policy + anonymized text
-
-    Returns:
-        Tuple of (SensitiveInformationPolicy or None, anonymized_text)
-    """
+    """def check_pii(text: str) -> tuple[Optional[SensitiveInformationPolicy], str]:
+    Check for PII in text and return policy + anonymized text.  This function scans
+    the provided text for personally identifiable information (PII)  using
+    predefined regex patterns from GUARDRAIL_CONFIG. It compiles each pattern and
+    searches for matches, collecting any found PII entities. Depending on the
+    configuration,  it either anonymizes the matched text or blocks it. If any PII
+    is detected, it returns  a SensitiveInformationPolicy containing the found
+    entities along with the modified text;  otherwise, it returns None and the
+    original text."""
     pii_entities = []
     anonymized_text = text
     action = "ANONYMIZED" if GUARDRAIL_CONFIG.anonymize_pii else "BLOCKED"
@@ -278,11 +281,20 @@ def check_pii(text: str) -> tuple[Optional[SensitiveInformationPolicy], str]:
 def process_guardrail_request(
     request: BedrockRequest,
 ) -> tuple[BedrockGuardrailResponse, List[str]]:
-    """
-    Process a guardrail request and return the response.
-
+    """Process a guardrail request and return the response.
+    
+    This function extracts text from the provided request content, analyzes it for
+    blocked words, topics, and personally identifiable information (PII), and
+    constructs a response based on the findings. It utilizes helper functions such
+    as check_blocked_words, check_blocked_topics, and check_pii to assess the
+    content and determine if any interventions are necessary. The final response
+    includes assessments and modified outputs if applicable.
+    
+    Args:
+        request (BedrockRequest): The request object containing content items to be processed.
+    
     Returns:
-        Tuple of (response, list of output texts)
+        tuple[BedrockGuardrailResponse, List[str]]: A tuple containing the response object and a list of output texts.
     """
     all_text_content = []
     output_texts = []
@@ -347,7 +359,7 @@ def process_guardrail_request(
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
+    """Health check endpoint."""
     return {
         "service": "Mock Bedrock Guardrail API",
         "status": "running",
@@ -357,7 +369,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint"""
+    """Health check endpoint."""
     return {"status": "healthy"}
 
 
@@ -417,17 +429,17 @@ class LitellmBasicGuardrailResponse(BaseModel):
 async def beta_litellm_basic_guardrail_api(
     request: LitellmBasicGuardrailRequest,
 ) -> LitellmBasicGuardrailResponse:
-    """
-    Apply guardrail to input or output content.
-
-    This endpoint mimics the AWS Bedrock ApplyGuardrail API.
-
+    """Apply guardrail to input content based on specific criteria.
+    
+    This endpoint processes the input content from the
+    LitellmBasicGuardrailRequest.  It checks for the presence of restricted terms,
+    such as "ishaan", to block the request  or identifies personally identifiable
+    information (PII) to redact it. The function  returns a
+    LitellmBasicGuardrailResponse indicating the action taken based on the
+    analysis.
+    
     Args:
-        request: The guardrail request containing content to analyze
-        token: Bearer token (verified by dependency)
-
-    Returns:
-        LitellmBasicGuardrailResponse with analysis results
+        request: The guardrail request containing content to analyze.
     """
     print(f"request: {request}")
     if any("ishaan" in text.lower() for text in request.texts):
@@ -449,18 +461,7 @@ async def beta_litellm_basic_guardrail_api(
 async def update_config(
     config: GuardrailConfig, token: str = Depends(verify_bearer_token)
 ):
-    """
-    Update the guardrail configuration.
-
-    This is a testing endpoint to modify the mock guardrail behavior.
-
-    Args:
-        config: New guardrail configuration
-        token: Bearer token (verified by dependency)
-
-    Returns:
-        Updated configuration
-    """
+    """Update the guardrail configuration."""
     global GUARDRAIL_CONFIG
     GUARDRAIL_CONFIG = config
     return {"status": "updated", "config": GUARDRAIL_CONFIG}
@@ -468,15 +469,7 @@ async def update_config(
 
 @app.get("/config")
 async def get_config(token: str = Depends(verify_bearer_token)):
-    """
-    Get the current guardrail configuration.
-
-    Args:
-        token: Bearer token (verified by dependency)
-
-    Returns:
-        Current configuration
-    """
+    """Get the current guardrail configuration."""
     return GUARDRAIL_CONFIG
 
 
@@ -487,7 +480,7 @@ async def get_config(token: str = Depends(verify_bearer_token)):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc: HTTPException):
-    """Custom error handler for HTTP exceptions"""
+    """Custom error handler for HTTP exceptions."""
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": exc.detail},
