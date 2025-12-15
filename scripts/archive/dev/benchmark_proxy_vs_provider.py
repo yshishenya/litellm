@@ -91,7 +91,16 @@ class BenchmarkResults:
     total_time: float = 0.0
     
     def calculate_stats(self) -> Dict[str, Any]:
-        """Calculate statistics from the results"""
+        """Calculate statistics from the results.
+        
+        This function computes various statistics based on the request results,
+        including  total requests, successful requests, failed requests, success and
+        error rates,  and latency statistics. If there are no latencies recorded, it
+        returns default  values for success and error rates. Otherwise, it calculates
+        the mean, median,  minimum, maximum, and standard deviation of the latencies,
+        along with the 50th  and 95th percentiles. The function also tracks unique
+        errors encountered during  the requests.
+        """
         if not self.latencies:
             return {
                 "total_requests": self.total_requests,
@@ -129,7 +138,7 @@ class BenchmarkResults:
     
     @staticmethod
     def _percentile(data: List[float], percentile: int) -> float:
-        """Calculate percentile"""
+        """Calculate the specified percentile of a list of numbers."""
         sorted_data = sorted(data)
         index = int(len(sorted_data) * (percentile / 100))
         if index >= len(sorted_data):
@@ -204,7 +213,7 @@ async def warmup_endpoint(
     num_warmup: int = 5,
     timeout_seconds: int = 60,
 ) -> None:
-    """Perform warm-up requests to avoid cold start penalties"""
+    """Perform warm-up requests to avoid cold start penalties."""
     timeout = aiohttp.ClientTimeout(total=timeout_seconds)
     connector = TCPConnector(
         limit=100,  # Max connections
@@ -232,7 +241,7 @@ async def make_request_with_semaphore(
     payload: Dict[str, Any],
     timeout: aiohttp.ClientTimeout,
 ) -> RequestStats:
-    """Make a request with semaphore-based concurrency control"""
+    """Make a request with semaphore-based concurrency control."""
     async with semaphore:
         return await make_request(session, url, headers, payload, timeout)
 
@@ -246,16 +255,25 @@ async def benchmark_endpoint(
     warmup: bool = True,
     max_concurrent: Optional[int] = None,
 ) -> BenchmarkResults:
-    """Benchmark an endpoint with parallel requests
+    """Benchmark an endpoint with parallel requests.
+    
+    This function benchmarks a specified endpoint by sending a defined number of
+    requests concurrently. It supports warm-up requests and allows for
+    configuration of maximum concurrent requests. The results are aggregated,
+    including successful requests, latencies, and status codes, and returned as a
+    BenchmarkResults object.
     
     Args:
-        url: Endpoint URL to benchmark
-        headers: HTTP headers
-        payload: Request payload
-        num_requests: Total number of requests to make
-        timeout_seconds: Request timeout
-        warmup: Whether to perform warm-up requests
-        max_concurrent: Maximum concurrent requests (None = unlimited, all at once)
+        url (str): Endpoint URL to benchmark.
+        headers (Dict[str, str]): HTTP headers to include in the requests.
+        payload (Dict[str, Any]): Request payload to send with each request.
+        num_requests (int?): Total number of requests to make. Defaults to 1000.
+        timeout_seconds (int?): Request timeout in seconds. Defaults to 60.
+        warmup (bool?): Whether to perform warm-up requests. Defaults to True.
+        max_concurrent (Optional[int]?): Maximum concurrent requests (None = unlimited, all at once).
+    
+    Returns:
+        BenchmarkResults: An object containing the results of the benchmark.
     """
     print(f"\nStarting benchmark for {url}")
     
@@ -366,7 +384,7 @@ def print_results(name: str, results: BenchmarkResults):
 
 
 def aggregate_results(results_list: List[BenchmarkResults]) -> BenchmarkResults:
-    """Aggregate results from multiple runs"""
+    """Aggregate results from multiple BenchmarkResults instances."""
     if not results_list:
         return BenchmarkResults()
     
@@ -404,7 +422,16 @@ def aggregate_results(results_list: List[BenchmarkResults]) -> BenchmarkResults:
 
 
 def print_run_variance(name: str, results_list: List[BenchmarkResults]):
-    """Print variance statistics across multiple runs"""
+    """def print_run_variance(name: str, results_list: List[BenchmarkResults]):
+    
+    Print variance statistics across multiple runs.  This function calculates and
+    prints the variance statistics for mean latencies  and throughputs from a list
+    of BenchmarkResults. It first checks if the  results_list contains more than
+    one entry, then collects mean latencies and  throughputs from each result.
+    Finally, it computes and displays the mean,  minimum, maximum, standard
+    deviation, and coefficient of variation for the  latencies, as well as the
+    mean, minimum, maximum, and standard deviation for  the throughputs.
+    """
     if len(results_list) <= 1:
         return
     
@@ -440,7 +467,14 @@ def print_run_variance(name: str, results_list: List[BenchmarkResults]):
 
 
 def compare_results(proxy_results: BenchmarkResults, provider_results: BenchmarkResults):
-    """Compare and print differences between proxy and provider results"""
+    """Compare and print differences between proxy and provider results.
+    
+    This function calculates and displays the success rate, throughput,  latency,
+    and total time for both proxy and provider results. It uses  the
+    `calculate_stats` method from the `BenchmarkResults` class to  obtain the
+    necessary statistics and then prints a detailed comparison  including
+    differences in each metric.
+    """
     proxy_stats = proxy_results.calculate_stats()
     provider_stats = provider_results.calculate_stats()
     
