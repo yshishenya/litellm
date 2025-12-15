@@ -196,6 +196,7 @@ ignored_keys = [
     "endTime",
     "completionStartTime",
     "endTime",
+    "organization_id",
     "metadata.model_map_information",
     "metadata.usage_object",
     "metadata.cold_storage_object_key",
@@ -1163,6 +1164,7 @@ class TestSpendLogsPayload:
                     "proxy_server_request": "{}",
                     "status": "success",
                     "mcp_namespaced_tool_name": None,
+                    "agent_id": None,
                 }
             )
 
@@ -1256,6 +1258,7 @@ class TestSpendLogsPayload:
                     "proxy_server_request": "{}",
                     "status": "success",
                     "mcp_namespaced_tool_name": None,
+                    "agent_id": None,
                 }
             )
 
@@ -1347,6 +1350,7 @@ class TestSpendLogsPayload:
                     "proxy_server_request": "{}",
                     "status": "success",
                     "mcp_namespaced_tool_name": None,
+                    "agent_id": None,
                 }
             )
 
