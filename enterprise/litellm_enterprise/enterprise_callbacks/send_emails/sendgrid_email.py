@@ -42,9 +42,7 @@ class SendGridEmailLogger(BaseEmailLogger):
         subject: str,
         html_body: str,
     ):
-        """
-        Send an email via SendGrid.
-        """
+        """Send an email via SendGrid."""
         if not self.sendgrid_api_key:
             raise ValueError("SENDGRID_API_KEY is not set")
 
