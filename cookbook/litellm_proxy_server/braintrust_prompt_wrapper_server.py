@@ -31,22 +31,7 @@ app = FastAPI(
 
 
 def transform_braintrust_message(message: Dict[str, Any]) -> Dict[str, str]:
-    """
-    Transform a Braintrust message to LiteLLM format.
-
-    Braintrust message format:
-    {
-        "role": "system",
-        "content": "...",
-        "name": "..." (optional)
-    }
-
-    LiteLLM format:
-    {
-        "role": "system",
-        "content": "..."
-    }
-    """
+    """Transform a Braintrust message to LiteLLM format."""
     result = {
         "role": message.get("role", "user"),
         "content": message.get("content", ""),
@@ -169,17 +154,21 @@ async def get_prompt(
         None, description="Bearer token for Braintrust API"
     ),
 ) -> JSONResponse:
-    """
-    Fetch a prompt from Braintrust and transform it to LiteLLM format.
-
-    Args:
-        prompt_id: The Braintrust prompt ID
-        authorization: Bearer token for Braintrust API (from header)
-
-    Returns:
-        JSONResponse with the transformed prompt data
-    """
     # Extract token from Authorization header or environment
+    """Fetch and transform a prompt from Braintrust to LiteLLM format.
+    
+    This function retrieves a prompt using the provided prompt_id from the
+    Braintrust API. It first extracts the Bearer token from the authorization
+    header or environment variable. If the token is valid, it makes an
+    asynchronous request to the Braintrust API to fetch the prompt data.  The
+    response is then transformed into LiteLLM format before being returned  as a
+    JSONResponse. Error handling is implemented for various potential  issues
+    during the API call and data transformation.
+    
+    Args:
+        prompt_id: The Braintrust prompt ID to fetch.
+        authorization: Bearer token for Braintrust API (from header).
+    """
     braintrust_token = None
     if authorization and authorization.startswith("Bearer "):
         braintrust_token = authorization.replace("Bearer ", "")
@@ -244,7 +233,7 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    """Root endpoint with service information."""
+    """Root endpoint providing service information."""
     return {
         "service": "Braintrust Prompt Wrapper for LiteLLM",
         "version": "1.0.0",
