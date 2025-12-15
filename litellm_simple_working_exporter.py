@@ -154,7 +154,7 @@ class RedisCheckpointManager:
             logger.info("Checkpoint disabled via ENABLE_CHECKPOINT=false")
 
     def get_last_export_time(self):
-        """Get last export time from Redis or None if not available"""
+        """Retrieve the last export time from Redis or return None if unavailable."""
         if not self.redis_available:
             return None
 
@@ -170,7 +170,7 @@ class RedisCheckpointManager:
         return None
 
     def save_checkpoint(self, export_time: datetime):
-        """Save checkpoint to Redis"""
+        """Save checkpoint to Redis."""
         if not self.redis_available:
             return
 
@@ -222,7 +222,7 @@ class LiteLLMMetricsExporter:
         self.initialized = True
 
     def connect_to_db(self):
-        """Connect to PostgreSQL database"""
+        """Connect to PostgreSQL database."""
         try:
             self.connection = psycopg2.connect(
                 host=DB_HOST,
@@ -238,7 +238,7 @@ class LiteLLMMetricsExporter:
             raise
 
     def execute_query(self, query, params=None):
-        """Execute query with error handling"""
+        """Execute a SQL query with error handling."""
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute(query, params)
@@ -250,9 +250,14 @@ class LiteLLMMetricsExporter:
             return []
 
     def load_full_history_from_daily_table(self):
-        """
-        Load ALL historical data from LiteLLM_DailyTeamSpend
-        This is FAST because it uses pre-aggregated daily data
+        """Load all historical data from LiteLLM_DailyTeamSpend.
+        
+        This function retrieves aggregated historical data from the
+        LiteLLM_DailyTeamSpend table, utilizing pre-aggregated daily data for
+        efficiency. It executes a SQL query to fetch metrics such as total spend, total
+        requests, and token counts, grouped by team and model. The results are then
+        used to initialize various metrics for monitoring, including spend, successful
+        requests, and failed requests.
         """
         logger.info("=" * 70)
         logger.info("LOADING FULL HISTORY FROM LiteLLM_DailyTeamSpend")
@@ -329,13 +334,23 @@ class LiteLLMMetricsExporter:
         logger.info("=" * 70)
 
     def _get_team_aliases(self):
-        """Get team_id -> team_alias mapping"""
+        """Get a mapping of team_id to team_alias."""
         query = 'SELECT team_id, team_alias FROM "LiteLLM_TeamTable"'
         results = self.execute_query(query)
         return {str(row['team_id']): str(row['team_alias']) for row in results if row['team_id']}
 
     def load_delta(self, since: datetime):
-        """Load only new records since checkpoint"""
+        """Load only new records since the specified checkpoint.
+        
+        This function retrieves records from the "LiteLLM_SpendLogs" table that have a
+        "startTime"  greater than or equal to the provided `since` datetime. It
+        performs left joins with the  "LiteLLM_TeamTable" and "LiteLLM_EndUserTable" to
+        enrich the data with team and end-user  information. The results are then
+        processed to increment various metrics based on the  loaded records.
+        
+        Args:
+            since (datetime): The datetime from which to load new records.
+        """
         logger.info(f"Loading delta since {since}")
 
         query = '''
@@ -386,7 +401,18 @@ class LiteLLMMetricsExporter:
                 litellm_tokens_total.labels(**labels, token_type='completion').inc(float(row['completion_tokens']))
 
     def export_core_metrics(self):
-        """Export new records to Counter metrics since last export"""
+        """Export new records to Counter metrics since the last export.
+        
+        This function retrieves new records from the "LiteLLM_SpendLogs" table that
+        have been added since the last export time. It executes a SQL query to fetch
+        relevant data, including team and user information, and increments various
+        metrics based on the retrieved records. The function also updates the last
+        export time to the current datetime after processing the records.
+        
+        Args:
+            self: The instance of the class that contains the last_export_time attribute and the
+                execute_query method.
+        """
         query = '''
         SELECT
             COALESCE(sl.team_id, 'no_team') as team_id,
@@ -520,7 +546,7 @@ class LiteLLMMetricsExporter:
                 litellm_tokens_per_second.labels(**labels).set(float(tokens_per_sec))
 
     def export_team_budget_metrics(self):
-        """Export team budget status metrics"""
+        """Export team budget status metrics."""
         litellm_team_budget_usd._metrics.clear()
 
         query = '''
@@ -552,7 +578,7 @@ class LiteLLMMetricsExporter:
                 litellm_team_budget_usd.labels(team_id=team_id, team_alias=team_alias, metric_type='usage_percent').set(usage_percent)
 
     def export_cost_efficiency_metrics(self):
-        """Export cost efficiency metrics"""
+        """Export cost efficiency metrics."""
         litellm_cost_efficiency._metrics.clear()
 
         query = '''
@@ -631,7 +657,7 @@ class LiteLLMMetricsExporter:
         self.checkpoint_manager.save_checkpoint(self.last_export_time)
 
     def shutdown_handler(self, signum, frame):
-        """Graceful shutdown with checkpoint save"""
+        """Gracefully handle shutdown and save the final checkpoint."""
         logger.info("=" * 70)
         logger.info("Received shutdown signal, saving final checkpoint...")
         self.save_checkpoint()
@@ -640,7 +666,7 @@ class LiteLLMMetricsExporter:
         sys.exit(0)
 
     def run(self):
-        """Main loop"""
+        """Main loop for the metrics exporter."""
         logger.info("=" * 70)
         logger.info("🚀 LITELLM METRICS EXPORTER V2.0 (Redis Checkpoint)")
         logger.info("=" * 70)
