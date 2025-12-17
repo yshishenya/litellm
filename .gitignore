@@ -106,3 +106,4 @@ LAZY_LOADING_IMPROVEMENTS.md
 **/*.storageState.json
 **/coverage
 backups/
+logs/
