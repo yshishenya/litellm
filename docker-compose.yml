@@ -1,10 +1,10 @@
 services:
   litellm:
-    # build:
-    #   context: .
-    #   args:
-    #     target: runtime
-    image: ghcr.io/berriai/litellm:main-stable
+    build:
+      context: .
+      args:
+        target: runtime
+    image: docker.litellm.ai/berriai/litellm:main-stable
     #########################################
     ## Config file for LiteLLM proxy with usage tracking ##
     volumes:
