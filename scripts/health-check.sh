@@ -8,6 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+STATUS_FILE="${PROJECT_DIR}/logs/.health_status"
 
 # Загрузить только необходимые переменные окружения
 if [ -f "${PROJECT_DIR}/.env" ]; then
@@ -61,6 +62,22 @@ send_telegram() {
             -d text="${message}" \
             -d parse_mode="HTML" &>/dev/null || true
     fi
+}
+
+# Получить предыдущий статус
+get_previous_status() {
+    if [ -f "$STATUS_FILE" ]; then
+        cat "$STATUS_FILE"
+    else
+        echo "ok"
+    fi
+}
+
+# Сохранить текущий статус
+save_status() {
+    local status="$1"
+    mkdir -p "$(dirname "$STATUS_FILE")"
+    echo "$status" > "$STATUS_FILE"
 }
 
 # Проверка Docker контейнеров
@@ -320,6 +337,9 @@ main() {
     echo -e "${RED}Провалено:${NC} ${CHECKS_FAILED}/${CHECKS_TOTAL}"
     echo ""
 
+    # Получаем предыдущий статус
+    local previous_status=$(get_previous_status)
+
     # Отправка уведомления при проблемах
     if [ ${CHECKS_FAILED} -gt 0 ]; then
         local message="🚨 <b>LiteLLM Health Check FAILED</b>%0A%0A"
@@ -334,11 +354,26 @@ main() {
         done
 
         send_telegram "$message"
+        save_status "failed"
 
         log_error "Проверка завершена с ошибками!"
         exit 1
     else
-        log_success "Все проверки пройдены!"
+        echo -e "${GREEN}[✓]${NC} Все проверки пройдены!"
+
+        # Уведомление о восстановлении (если предыдущий статус был failed)
+        if [ "$previous_status" == "failed" ]; then
+            local message="✅ <b>LiteLLM RECOVERED</b>%0A%0A"
+            message+="Сервер: $(hostname)%0A"
+            message+="Время: $(date '+%Y-%m-%d %H:%M:%S')%0A"
+            message+="Все проверки пройдены: ${CHECKS_PASSED}/${CHECKS_TOTAL}%0A%0A"
+            message+="Проблема устранена!"
+
+            send_telegram "$message"
+            log_info "Отправлено уведомление о восстановлении"
+        fi
+
+        save_status "ok"
 
         # Отправляем успешное уведомление раз в день (только в 03:00)
         if [ "$(date +%H:%M)" == "03:00" ]; then
