@@ -15,16 +15,16 @@ BACKUP_BASE_DIR="${PROJECT_DIR}/backups"
 
 # Database configuration
 DB_HOST="localhost"
-DB_PORT="5434"
+DB_PORT="5433"
 DB_USER="llmproxy"
 DB_PASSWORD="dbpassword9090"
 DB_NAME="litellm"
 DB_CONTAINER="litellm_db"
 
-# Retention periods
-DAILY_RETENTION=7      # Keep 7 daily backups
-WEEKLY_RETENTION=4     # Keep 4 weekly backups
-MONTHLY_RETENTION=12   # Keep 12 monthly backups
+# Retention periods - OPTIMIZED for disk space
+DAILY_RETENTION=3      # Keep 3 daily backups (rest on remote)
+WEEKLY_RETENTION=0     # Disabled (kept only on remote)
+MONTHLY_RETENTION=0    # Disabled (kept only on remote)
 
 # Colors for output
 RED='\033[0;31m'
@@ -120,10 +120,11 @@ create_backup_dir() {
 # Backup PostgreSQL database
 backup_database() {
     local backup_dir=$1
-    local db_backup_file="${backup_dir}/postgresql_${DB_NAME}.sql"
+    local db_backup_file="${backup_dir}/postgresql_${DB_NAME}.sql.gz"
 
-    log_info "Backing up PostgreSQL database..."
+    log_info "Backing up PostgreSQL database (with gzip compression)..."
 
+    # Backup with compression - saves ~80% disk space
     PGPASSWORD="${DB_PASSWORD}" pg_dump \
         -h "${DB_HOST}" \
         -p "${DB_PORT}" \
@@ -132,7 +133,7 @@ backup_database() {
         --clean \
         --if-exists \
         --create \
-        > "${db_backup_file}"
+        | gzip -9 > "${db_backup_file}"
 
     if [ ! -s "${db_backup_file}" ]; then
         log_error "Database backup file is empty"
@@ -140,11 +141,11 @@ backup_database() {
     fi
 
     local db_size=$(du -h "${db_backup_file}" | cut -f1)
-    log_success "Database backed up (${db_size}): ${db_backup_file}"
+    log_success "Database backed up compressed (${db_size}): ${db_backup_file}"
 
-    # Verify backup can be read
-    if ! head -n 1 "${db_backup_file}" &> /dev/null; then
-        log_error "Database backup file is not readable"
+    # Verify backup can be read (gzip test)
+    if ! gzip -t "${db_backup_file}" 2>/dev/null; then
+        log_error "Database backup file is corrupted"
         return 1
     fi
 }

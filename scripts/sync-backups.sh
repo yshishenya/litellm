@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # Configuration
-BACKUP_SOURCE="/home/yan/litellm/backups"
+BACKUP_SOURCE="/opt/projects/litellm/backups"
 REMOTE_HOST="135.181.215.121"
 REMOTE_USER="yan"
 REMOTE_PATH="/opt/backups/projects/litellm"
