@@ -13,6 +13,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BACKUP_BASE_DIR="${PROJECT_DIR}/backups"
 
+# Load environment variables from .env
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    while IFS='=' read -r key value; do
+        # Remove quotes and inline comments
+        value=$(echo "$value" | sed 's/^"//' | sed 's/".*$//' | sed "s/^'//" | sed "s/'.*$//")
+        export "$key=$value"
+    done < <(grep -E '^TELEGRAM_[A-Z_]+=' "${PROJECT_DIR}/.env")
+fi
+
 # Database configuration
 DB_HOST="localhost"
 DB_PORT="5433"
@@ -49,6 +58,31 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Send Telegram notification
+send_telegram() {
+    local status=$1
+    local message=$2
+
+    # Check if Telegram is configured
+    if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+        log_warning "Telegram not configured, skipping notification"
+        return 0
+    fi
+
+    local emoji="✅"
+    [ "$status" = "error" ] && emoji="❌"
+
+    local text="${emoji} <b>LiteLLM Backup</b>
+${message}
+<i>$(date '+%Y-%m-%d %H:%M:%S')</i>"
+
+    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${TELEGRAM_CHAT_ID}" \
+        -d "text=${text}" \
+        -d "parse_mode=HTML" \
+        > /dev/null 2>&1 && log_info "Telegram notification sent" || log_warning "Failed to send Telegram notification"
 }
 
 # Check if required commands exist
@@ -379,6 +413,7 @@ main() {
     if ! backup_database "${backup_dir}"; then
         log_error "Database backup failed"
         write_backup_status "failed" "${backup_dir}" "Database backup failed"
+        send_telegram "error" "Database backup failed!"
         exit 1
     fi
 
@@ -414,6 +449,12 @@ main() {
     log_success "Size: ${backup_size}"
     log_success "Duration: ${duration} seconds"
     echo ""
+
+    # Send success notification to Telegram
+    send_telegram "success" "Backup completed
+Size: ${backup_size}
+Duration: ${duration}s
+Type: ${backup_type}"
 }
 
 # Run main function
