@@ -171,6 +171,91 @@
       }
     },
     {
+      "id": 7,
+      "title": "💳 Расходы по провайдерам",
+      "type": "piechart",
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 28},
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT\n  NOW() as time,\n  COALESCE(sl.custom_llm_provider, 'unknown') as metric,\n  SUM(sl.spend) as value\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND (sl.metadata->>'user_api_key_team_alias' ~ '$team_filter' OR '$team_filter' = '.*')\n  AND sl.metadata->>'user_api_key_team_alias' IS NOT NULL\n  AND sl.metadata->>'user_api_key_team_alias' != ''\nGROUP BY sl.custom_llm_provider\nHAVING SUM(sl.spend) > 0\nORDER BY value DESC\nLIMIT 10"
+        }
+      ],
+      "options": {
+        "pieType": "donut",
+        "legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": {"mode": "palette-classic"}
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "🔥 Тепловая карта активности (день × час)",
+      "type": "table",
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 28},
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  CASE EXTRACT(DOW FROM sl.\"startTime\")\n    WHEN 1 THEN '1 Пн'\n    WHEN 2 THEN '2 Вт'\n    WHEN 3 THEN '3 Ср'\n    WHEN 4 THEN '4 Чт'\n    WHEN 5 THEN '5 Пт'\n    WHEN 6 THEN '6 Сб'\n    WHEN 0 THEN '7 Вс'\n  END as day_label,\n  LPAD(EXTRACT(HOUR FROM sl.\"startTime\")::text, 2, '0') as hour_label,\n  COUNT(*) as requests\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND (sl.metadata->>'user_api_key_team_alias' ~ '$team_filter' OR '$team_filter' = '.*')\n  AND sl.metadata->>'user_api_key_team_alias' IS NOT NULL\n  AND sl.metadata->>'user_api_key_team_alias' != ''\nGROUP BY day_label, hour_label\nORDER BY day_label, hour_label"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "hour_label",
+            "rowField": "day_label",
+            "valueField": "requests"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "day_label": "День"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "align": "center",
+            "cellOptions": {"type": "color-background"}
+          },
+          "color": {"mode": "continuous-GrYlRd"}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "День"},
+            "properties": [
+              {"id": "custom.cellOptions", "value": {"type": "auto"}},
+              {"id": "custom.align", "value": "left"}
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
       "id": 6,
       "title": "📈 Динамика расходов по проектам",
       "type": "timeseries",
@@ -219,7 +304,7 @@
       "id": 8,
       "title": "🏢 Детальная таблица проектов",
       "type": "table",
-      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 28},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 38},
       "datasource": {
         "type": "postgres",
         "uid": "postgres"
@@ -322,7 +407,7 @@
       "id": 9,
       "title": "🤖 Детальная таблица моделей",
       "type": "table",
-      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 40},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 50},
       "datasource": {
         "type": "postgres",
         "uid": "postgres"
