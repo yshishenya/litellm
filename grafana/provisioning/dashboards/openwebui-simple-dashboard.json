@@ -300,7 +300,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  COALESCE(sl.end_user, 'unknown') as \"👤 Пользователь\",\n  ROUND(SUM(sl.spend)::numeric, 2) as \"💰 Общие расходы\",\n  ROUND((SUM(sl.spend) / SUM(SUM(sl.spend)) OVER())::numeric, 3) as \"📈 % от общих\",\n  COUNT(*) as \"📊 Всего запросов\",\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"🔢 Всего токенов\",\n  SUM(sl.prompt_tokens) as \"⬇️ Входные токены\",\n  SUM(sl.completion_tokens) as \"⬆️ Выходные токены\",\n  ROUND((SUM(sl.prompt_tokens)::numeric / NULLIF(SUM(sl.completion_tokens), 0))::numeric, 2) as \"⚖️ In/Out\",\n  ROUND((SUM(sl.prompt_tokens + sl.completion_tokens)::numeric / NULLIF(SUM(sl.spend), 0))::numeric, 0) as \"⚡ Токены за $\",\n  ROUND((SUM(sl.spend) / NULLIF(COUNT(*), 0))::numeric, 4) as \"💵 Стоимость за запрос\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user\nHAVING SUM(sl.spend) > 0\nORDER BY \"💰 Общие расходы\" DESC"
+          "rawSql": "SELECT\n  COALESCE(sl.end_user, 'unknown') as \"👤 Пользователь\",\n  ROUND(SUM(sl.spend)::numeric, 2) as \"💰 Общие расходы\",\n  ROUND((SUM(sl.spend) / SUM(SUM(sl.spend)) OVER())::numeric, 3) as \"📈 % от общих\",\n  COUNT(*) as \"📊 Всего запросов\",\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"🔢 Всего токенов\",\n  SUM(sl.prompt_tokens) as \"⬇️ Входные токены\",\n  SUM(sl.completion_tokens) as \"⬆️ Выходные токены\",\n  ROUND((SUM(sl.prompt_tokens)::numeric / NULLIF(SUM(sl.completion_tokens), 0))::numeric, 2) as \"⚖️ In/Out\",\n  ROUND((SUM(sl.prompt_tokens + sl.completion_tokens)::numeric / NULLIF(SUM(sl.spend), 0))::numeric, 0) as \"⚡ Токены за $\",\n  ROUND((SUM(sl.spend) / NULLIF(COUNT(*), 0))::numeric, 4) as \"💵 Стоимость за запрос\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user\nHAVING SUM(sl.spend) > 0\nORDER BY \"💰 Общие расходы\" DESC\nLIMIT 20"
         }
       ],
       "fieldConfig": {
@@ -413,27 +413,16 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.spend) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.spend) > 0\nORDER BY \"Value\" DESC"
+          "rawSql": "WITH top_users AS (\n  SELECT\n    sl.end_user as end_user_alias\n  FROM \"LiteLLM_SpendLogs\" sl\n  WHERE\n    sl.\"startTime\" >= $__timeFrom()\n    AND sl.\"startTime\" < $__timeTo()\n    AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n    AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n    AND sl.end_user IS NOT NULL\n    AND sl.end_user != ''\n  GROUP BY sl.end_user\n  ORDER BY SUM(sl.spend) DESC\n  LIMIT 20\n)\nSELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.spend) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\n  AND sl.end_user IN (SELECT end_user_alias FROM top_users)\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.spend) > 0\nORDER BY \"Value\" DESC"
         }
       ],
       "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {"Time": true},
-            "renameByName": {
-              "end_user_alias": "Пользователь",
-              "model": "Модель",
-              "Value": "Расходы"
-            }
-          }
-        },
         {
           "id": "filterByValue",
           "options": {
             "filters": [
               {
-                "fieldName": "Расходы",
+                "fieldName": "Value",
                 "config": {
                   "id": "greater",
                   "options": {"value": 0}
@@ -446,9 +435,18 @@
         {
           "id": "groupingToMatrix",
           "options": {
-            "columnField": "Модель",
-            "rowField": "Пользователь",
-            "valueField": "Расходы"
+            "columnField": "model",
+            "rowField": "end_user_alias",
+            "valueField": "Value"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "renameByName": {
+              "end_user_alias": "Пользователь"
+            }
           }
         }
       ],
@@ -486,27 +484,16 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.prompt_tokens + sl.completion_tokens) > 0\nORDER BY \"Value\" DESC"
+          "rawSql": "WITH top_users AS (\n  SELECT\n    sl.end_user as end_user_alias\n  FROM \"LiteLLM_SpendLogs\" sl\n  WHERE\n    sl.\"startTime\" >= $__timeFrom()\n    AND sl.\"startTime\" < $__timeTo()\n    AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n    AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n    AND sl.end_user IS NOT NULL\n    AND sl.end_user != ''\n  GROUP BY sl.end_user\n  ORDER BY SUM(sl.spend) DESC\n  LIMIT 20\n)\nSELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  SUM(sl.prompt_tokens + sl.completion_tokens) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\n  AND sl.end_user IN (SELECT end_user_alias FROM top_users)\nGROUP BY sl.end_user, sl.model\nHAVING SUM(sl.prompt_tokens + sl.completion_tokens) > 0\nORDER BY \"Value\" DESC"
         }
       ],
       "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {"Time": true},
-            "renameByName": {
-              "end_user_alias": "Пользователь",
-              "model": "Модель",
-              "Value": "Токены"
-            }
-          }
-        },
         {
           "id": "filterByValue",
           "options": {
             "filters": [
               {
-                "fieldName": "Токены",
+                "fieldName": "Value",
                 "config": {
                   "id": "greater",
                   "options": {"value": 0}
@@ -519,9 +506,18 @@
         {
           "id": "groupingToMatrix",
           "options": {
-            "columnField": "Модель",
-            "rowField": "Пользователь",
-            "valueField": "Токены"
+            "columnField": "model",
+            "rowField": "end_user_alias",
+            "valueField": "Value"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "renameByName": {
+              "end_user_alias": "Пользователь"
+            }
           }
         }
       ],
@@ -559,27 +555,16 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  COUNT(*) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\nGROUP BY sl.end_user, sl.model\nHAVING COUNT(*) > 0\nORDER BY \"Value\" DESC"
+          "rawSql": "WITH top_users AS (\n  SELECT\n    sl.end_user as end_user_alias\n  FROM \"LiteLLM_SpendLogs\" sl\n  WHERE\n    sl.\"startTime\" >= $__timeFrom()\n    AND sl.\"startTime\" < $__timeTo()\n    AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n    AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n    AND sl.end_user IS NOT NULL\n    AND sl.end_user != ''\n  GROUP BY sl.end_user\n  ORDER BY SUM(sl.spend) DESC\n  LIMIT 20\n)\nSELECT\n  sl.end_user as \"end_user_alias\",\n  sl.model,\n  COUNT(*) as \"Value\"\nFROM \"LiteLLM_SpendLogs\" sl\nWHERE\n  sl.\"startTime\" >= $__timeFrom()\n  AND sl.\"startTime\" < $__timeTo()\n  AND sl.metadata->>'user_api_key_team_alias' = 'OpenWebUI'\n  AND (sl.end_user ~ '$user_filter' OR '$user_filter' = '.*')\n  AND sl.end_user IS NOT NULL\n  AND sl.end_user != ''\n  AND sl.end_user IN (SELECT end_user_alias FROM top_users)\nGROUP BY sl.end_user, sl.model\nHAVING COUNT(*) > 0\nORDER BY \"Value\" DESC"
         }
       ],
       "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {"Time": true},
-            "renameByName": {
-              "end_user_alias": "Пользователь",
-              "model": "Модель",
-              "Value": "Запросы"
-            }
-          }
-        },
         {
           "id": "filterByValue",
           "options": {
             "filters": [
               {
-                "fieldName": "Запросы",
+                "fieldName": "Value",
                 "config": {
                   "id": "greater",
                   "options": {"value": 0}
@@ -592,9 +577,18 @@
         {
           "id": "groupingToMatrix",
           "options": {
-            "columnField": "Модель",
-            "rowField": "Пользователь",
-            "valueField": "Запросы"
+            "columnField": "model",
+            "rowField": "end_user_alias",
+            "valueField": "Value"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {"Time": true},
+            "renameByName": {
+              "end_user_alias": "Пользователь"
+            }
           }
         }
       ],

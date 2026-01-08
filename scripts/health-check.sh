@@ -110,13 +110,15 @@ check_containers() {
     )
 
     for container in "${containers[@]}"; do
-        if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        local running_name
+        running_name=$(docker ps --format '{{.Names}}' | awk -v target="$container" '$0==target || $0 ~ ("(^|_)" target "$") {print $0; exit}')
+        if [ -n "${running_name}" ]; then
             # Проверяем наличие healthcheck
-            local has_healthcheck=$(docker inspect --format='{{.State.Health}}' "${container}" 2>/dev/null)
+            local has_healthcheck=$(docker inspect --format='{{.State.Health}}' "${running_name}" 2>/dev/null)
 
             if [ "$has_healthcheck" == "<nil>" ] || [ -z "$has_healthcheck" ]; then
                 # Нет healthcheck - проверяем просто что контейнер running
-                local state=$(docker inspect --format='{{.State.Running}}' "${container}" 2>/dev/null)
+                local state=$(docker inspect --format='{{.State.Running}}' "${running_name}" 2>/dev/null)
                 if [ "$state" == "true" ]; then
                     log_success "Контейнер ${container} работает"
                 else
@@ -124,7 +126,7 @@ check_containers() {
                 fi
             else
                 # Есть healthcheck - проверяем его статус
-                local health_status=$(docker inspect --format='{{.State.Health.Status}}' "${container}" 2>/dev/null)
+                local health_status=$(docker inspect --format='{{.State.Health.Status}}' "${running_name}" 2>/dev/null)
                 if [ "$health_status" == "healthy" ]; then
                     log_success "Контейнер ${container} работает"
                 else
