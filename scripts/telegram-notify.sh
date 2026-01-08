@@ -8,55 +8,26 @@ set -euo pipefail
 
 # ==================== Configuration ====================
 
-# Load from environment or .env file
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Source .env if exists
-if [ -f "${PROJECT_DIR}/.env" ]; then
-    set -a
-    source "${PROJECT_DIR}/.env" 2>/dev/null || true
-    set +a
+TELEGRAM_LIB="${SCRIPT_DIR}/lib/telegram.sh"
+if [ ! -f "${TELEGRAM_LIB}" ]; then
+    echo "ERROR: Missing ${TELEGRAM_LIB}"
+    exit 1
 fi
-
-# Telegram configuration
-TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
-TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+source "${TELEGRAM_LIB}"
+telegram_load_env "${PROJECT_DIR}/.env"
 
 # ==================== Functions ====================
 
 # Check if Telegram is configured
 check_telegram_config() {
-    if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
-        echo "WARNING: Telegram not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env"
+    if ! telegram_is_configured; then
+        echo "WARNING: Telegram not configured. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID/TELEGRAM_CHAT_IDS in .env"
         return 1
     fi
     return 0
-}
-
-# Send message to Telegram
-send_telegram_message() {
-    local message=$1
-    local parse_mode="${2:-HTML}"
-
-    if ! check_telegram_config; then
-        return 1
-    fi
-
-    local api_url="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
-
-    local response=$(curl -s -X POST "${api_url}" \
-        -d chat_id="${TELEGRAM_CHAT_ID}" \
-        -d parse_mode="${parse_mode}" \
-        -d text="${message}")
-
-    if echo "${response}" | grep -q '"ok":true'; then
-        return 0
-    else
-        echo "ERROR: Failed to send Telegram message"
-        echo "${response}"
-        return 1
-    fi
 }
 
 # Send backup success notification
@@ -78,7 +49,7 @@ send_backup_success() {
 
 <i>LiteLLM backup completed successfully.</i>"
 
-    send_telegram_message "${message}"
+    telegram_send "${message}" "HTML" "${PROJECT_DIR}/.env"
 }
 
 # Send backup failure notification
@@ -92,7 +63,7 @@ send_backup_failure() {
 
 <i>LiteLLM backup failed. Please check logs.</i>"
 
-    send_telegram_message "${message}"
+    telegram_send "${message}" "HTML" "${PROJECT_DIR}/.env"
 }
 
 # Send backup warning
@@ -106,7 +77,7 @@ send_backup_warning() {
 
 <i>Please review the backup process.</i>"
 
-    send_telegram_message "${message}"
+    telegram_send "${message}" "HTML" "${PROJECT_DIR}/.env"
 }
 
 # Send info message
@@ -119,7 +90,7 @@ ${info_msg}
 
 <b>Time:</b> $(date '+%Y-%m-%d %H:%M:%S')"
 
-    send_telegram_message "${message}"
+    telegram_send "${message}" "HTML" "${PROJECT_DIR}/.env"
 }
 
 # Send custom message with emoji
@@ -152,7 +123,7 @@ ${body}
 
 <b>Time:</b> $(date '+%Y-%m-%d %H:%M:%S')"
 
-    send_telegram_message "${message}"
+    telegram_send "${message}" "HTML" "${PROJECT_DIR}/.env"
 }
 
 # ==================== Main ====================
@@ -181,6 +152,7 @@ Examples:
 Environment Variables:
   TELEGRAM_BOT_TOKEN  - Telegram bot token from @BotFather
   TELEGRAM_CHAT_ID    - Your Telegram chat ID
+  TELEGRAM_CHAT_IDS   - Comma-separated chat IDs to notify (overrides TELEGRAM_CHAT_ID)
 
 EOF
     exit 1
@@ -228,13 +200,13 @@ case ${command} in
     test)
         if check_telegram_config; then
             echo "Testing Telegram configuration..."
-            if send_telegram_message "<b>🧪 Test Message</b>
+            if telegram_send "<b>🧪 Test Message</b>
 
 This is a test message from LiteLLM backup system.
 
 <b>Time:</b> $(date '+%Y-%m-%d %H:%M:%S')
 
-<i>If you received this, Telegram notifications are working correctly!</i>"; then
+<i>If you received this, Telegram notifications are working correctly!</i>" "HTML" "${PROJECT_DIR}/.env"; then
                 echo "✅ Telegram test successful!"
             else
                 echo "❌ Telegram test failed"

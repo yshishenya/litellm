@@ -6,37 +6,41 @@
 
 set -euo pipefail
 
-# Configuration
-BACKUP_SOURCE="/opt/projects/litellm/backups"
-REMOTE_HOST="135.181.215.121"
-REMOTE_USER="yan"
-REMOTE_PATH="/opt/backups/projects/litellm"
-RETENTION_DAYS=30  # Keep 30 days of backups on remote server
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+COMMON_LIB="${SCRIPT_DIR}/lib/common.sh"
+if [ -f "${COMMON_LIB}" ]; then
+    source "${COMMON_LIB}"
+else
+    echo "ERROR: Missing ${COMMON_LIB}"
+    exit 1
+fi
 
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# Configuration (override via environment or .env)
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    export BACKUP_REMOTE_HOST=$(grep "^BACKUP_REMOTE_HOST" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
+    export BACKUP_REMOTE_USER=$(grep "^BACKUP_REMOTE_USER" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
+    export BACKUP_REMOTE_PATH=$(grep "^BACKUP_REMOTE_PATH" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
+    export BACKUP_REMOTE_PORT=$(grep "^BACKUP_REMOTE_PORT" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
+    export BACKUP_BASE_DIR=$(grep "^BACKUP_BASE_DIR" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
+    export BACKUP_RETENTION_DAYS=$(grep "^BACKUP_RETENTION_DAYS" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
+fi
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+BACKUP_SOURCE="${BACKUP_SOURCE:-${BACKUP_BASE_DIR:-/opt/backups/litellm}}"
+REMOTE_HOST="${BACKUP_REMOTE_HOST:-}"
+REMOTE_USER="${BACKUP_REMOTE_USER:-}"
+REMOTE_PATH="${BACKUP_REMOTE_PATH:-}"
+REMOTE_PORT="${BACKUP_REMOTE_PORT:-22}"
+RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+require_cmds ssh rsync du readlink || exit 1
 
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+if [ -z "${REMOTE_HOST}" ] || [ -z "${REMOTE_USER}" ] || [ -z "${REMOTE_PATH}" ]; then
+    log_error "Missing remote config. Set BACKUP_REMOTE_HOST/BACKUP_REMOTE_USER/BACKUP_REMOTE_PATH in .env"
+    exit 1
+fi
 
-# Check if source exists
 if [ ! -d "$BACKUP_SOURCE" ]; then
     log_error "Backup source directory not found: $BACKUP_SOURCE"
     exit 1
@@ -50,8 +54,9 @@ log_info "╚══════════════════════�
 echo ""
 
 # Test SSH connection
+SSH_OPTS="-o BatchMode=yes -o ConnectTimeout=10 -o ConnectionAttempts=1 -p ${REMOTE_PORT}"
 log_info "Testing SSH connection to ${REMOTE_HOST}..."
-if ! ssh -o ConnectTimeout=10 ${REMOTE_USER}@${REMOTE_HOST} "echo OK" &>/dev/null; then
+if ! ssh ${SSH_OPTS} "${REMOTE_USER}@${REMOTE_HOST}" "echo OK" &>/dev/null; then
     log_error "Cannot connect to ${REMOTE_HOST}"
     exit 1
 fi
@@ -59,7 +64,7 @@ log_success "SSH connection OK"
 
 # Sync latest backup
 log_info "Syncing latest backup..."
-LATEST_BACKUP=$(readlink -f ${BACKUP_SOURCE}/latest 2>/dev/null || echo "")
+LATEST_BACKUP=$(readlink -f "${BACKUP_SOURCE}/latest" 2>/dev/null || echo "")
 
 if [ -z "$LATEST_BACKUP" ] || [ ! -d "$LATEST_BACKUP" ]; then
     log_error "No latest backup found"
@@ -79,6 +84,7 @@ START_TIME=$(date +%s)
 
 rsync -az --info=progress2 \
     --delete \
+    -e "ssh ${SSH_OPTS}" \
     "${LATEST_BACKUP}/" \
     "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/${BACKUP_NAME}/" 2>&1 | \
     grep -v "sending incremental file list" || true
@@ -90,12 +96,12 @@ log_success "Backup copied in ${DURATION} seconds"
 
 # Create latest symlink on remote
 log_info "Updating remote 'latest' symlink..."
-ssh ${REMOTE_USER}@${REMOTE_HOST} \
-    "ln -sfn ${REMOTE_PATH}/${BACKUP_NAME} ${REMOTE_PATH}/latest"
+ssh ${SSH_OPTS} "${REMOTE_USER}@${REMOTE_HOST}" \
+    "mkdir -p ${REMOTE_PATH} && ln -sfn ${REMOTE_PATH}/${BACKUP_NAME} ${REMOTE_PATH}/latest"
 
 # Cleanup old backups on remote server
 log_info "Cleaning up old backups (older than ${RETENTION_DAYS} days)..."
-DELETED_COUNT=$(ssh ${REMOTE_USER}@${REMOTE_HOST} \
+DELETED_COUNT=$(ssh ${SSH_OPTS} "${REMOTE_USER}@${REMOTE_HOST}" \
     "find ${REMOTE_PATH} -maxdepth 1 -type d -mtime +${RETENTION_DAYS} -not -path ${REMOTE_PATH} -exec rm -rf {} \; -print | wc -l")
 
 if [ "$DELETED_COUNT" -gt 0 ]; then
@@ -106,11 +112,11 @@ fi
 
 # Verify remote backup
 log_info "Verifying remote backup..."
-REMOTE_SIZE=$(ssh ${REMOTE_USER}@${REMOTE_HOST} "du -sh ${REMOTE_PATH}/${BACKUP_NAME} | cut -f1")
+REMOTE_SIZE=$(ssh ${SSH_OPTS} "${REMOTE_USER}@${REMOTE_HOST}" "du -sh ${REMOTE_PATH}/${BACKUP_NAME} | cut -f1")
 log_success "Remote backup size: ${REMOTE_SIZE}"
 
 # List remote backups
-REMOTE_COUNT=$(ssh ${REMOTE_USER}@${REMOTE_HOST} \
+REMOTE_COUNT=$(ssh ${SSH_OPTS} "${REMOTE_USER}@${REMOTE_HOST}" \
     "find ${REMOTE_PATH} -maxdepth 1 -type d -not -path ${REMOTE_PATH} | wc -l")
 log_info "Total remote backups: ${REMOTE_COUNT}"
 

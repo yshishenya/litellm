@@ -10,7 +10,26 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-BACKUP_BASE_DIR="${PROJECT_DIR}/backups"
+
+COMMON_LIB="${SCRIPT_DIR}/lib/common.sh"
+if [ -f "${COMMON_LIB}" ]; then
+    source "${COMMON_LIB}"
+else
+    echo "ERROR: Missing ${COMMON_LIB}"
+    exit 1
+fi
+
+# Telegram helper
+TELEGRAM_LIB="${SCRIPT_DIR}/lib/telegram.sh"
+if [ -f "${TELEGRAM_LIB}" ]; then
+    source "${TELEGRAM_LIB}"
+    telegram_load_env "${PROJECT_DIR}/.env"
+else
+    echo "ERROR: Missing ${TELEGRAM_LIB}"
+    exit 1
+fi
+
+BACKUP_BASE_DIR="${BACKUP_BASE_DIR:-/opt/backups/litellm}"
 
 # Database configuration
 DB_HOST="localhost"
@@ -20,37 +39,10 @@ DB_PASSWORD="dbpassword9090"
 DB_NAME="litellm"
 DB_CONTAINER="litellm_db"
 
-# Telegram notification script
-TELEGRAM_SCRIPT="${SCRIPT_DIR}/telegram-notify.sh"
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
-
 # ==================== Functions ====================
 
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-log_danger() {
-    echo -e "${RED}${BOLD}[DANGER]${NC} $1"
+check_requirements() {
+    require_cmds docker psql gzip stat du find awk sed || exit 1
 }
 
 # Display banner
@@ -171,20 +163,27 @@ verify_backup() {
         return 1
     fi
 
-    # Check for database backup
-    local db_backup="${backup_dir}/postgresql_${DB_NAME}.sql"
-    if [ ! -f "${db_backup}" ]; then
-        log_error "Database backup not found: ${db_backup}"
+    local db_backup_gz="${backup_dir}/postgresql_${DB_NAME}.sql.gz"
+    local db_backup_sql="${backup_dir}/postgresql_${DB_NAME}.sql"
+    local db_backup=""
+
+    if [ -f "${db_backup_gz}" ]; then
+        db_backup="${db_backup_gz}"
+        if ! gzip -t "${db_backup}" &> /dev/null; then
+            log_error "Database backup is corrupted: ${db_backup}"
+            return 1
+        fi
+    elif [ -f "${db_backup_sql}" ]; then
+        db_backup="${db_backup_sql}"
+        if ! head -n 1 "${db_backup}" &> /dev/null; then
+            log_error "Database backup is not readable or corrupted"
+            return 1
+        fi
+    else
+        log_error "Database backup not found: ${db_backup_gz} or ${db_backup_sql}"
         return 1
     fi
 
-    # Check if database backup is readable
-    if ! head -n 1 "${db_backup}" &> /dev/null; then
-        log_error "Database backup is not readable or corrupted"
-        return 1
-    fi
-
-    # Check backup size
     local db_size=$(stat -c%s "${db_backup}")
     if [ ${db_size} -lt 1000 ]; then
         log_error "Database backup is suspiciously small (${db_size} bytes)"
@@ -222,7 +221,8 @@ start_services() {
 # Restore database
 restore_database() {
     local backup_dir=$1
-    local db_backup="${backup_dir}/postgresql_${DB_NAME}.sql"
+    local db_backup_gz="${backup_dir}/postgresql_${DB_NAME}.sql.gz"
+    local db_backup_sql="${backup_dir}/postgresql_${DB_NAME}.sql"
 
     log_info "Restoring PostgreSQL database..."
 
@@ -235,27 +235,38 @@ restore_database() {
         -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${DB_NAME}' AND pid <> pg_backend_pid();" \
         &> /dev/null || true
 
-    # Restore database
-    if PGPASSWORD="${DB_PASSWORD}" psql \
-        -h "${DB_HOST}" \
-        -p "${DB_PORT}" \
-        -U "${DB_USER}" \
-        -d "${DB_NAME}" \
-        < "${db_backup}" 2>&1 | grep -v "^SET$\|^ALTER\|^--\|^$" || true; then
-
-        local record_count=$(PGPASSWORD="${DB_PASSWORD}" psql \
+    local restore_log="${backup_dir}/restore_${DB_NAME}.log"
+    if [ -f "${db_backup_gz}" ]; then
+        if ! PGPASSWORD="${DB_PASSWORD}" gzip -dc "${db_backup_gz}" | \
+            psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}" \
+            > "${restore_log}" 2>&1; then
+            log_error "Database restoration failed (see ${restore_log})"
+            return 1
+        fi
+    elif [ -f "${db_backup_sql}" ]; then
+        if ! PGPASSWORD="${DB_PASSWORD}" psql \
             -h "${DB_HOST}" \
             -p "${DB_PORT}" \
             -U "${DB_USER}" \
             -d "${DB_NAME}" \
-            -t -c "SELECT COUNT(*) FROM \"LiteLLM_SpendLogs\";" | xargs)
-
-        log_success "Database restored (${record_count} records in LiteLLM_SpendLogs)"
-        return 0
+            < "${db_backup_sql}" > "${restore_log}" 2>&1; then
+            log_error "Database restoration failed (see ${restore_log})"
+            return 1
+        fi
     else
-        log_error "Database restoration failed"
+        log_error "Database backup not found"
         return 1
     fi
+
+    local record_count=$(PGPASSWORD="${DB_PASSWORD}" psql \
+        -h "${DB_HOST}" \
+        -p "${DB_PORT}" \
+        -U "${DB_USER}" \
+        -d "${DB_NAME}" \
+        -t -c "SELECT COUNT(*) FROM \"LiteLLM_SpendLogs\";" | xargs)
+
+    log_success "Database restored (${record_count} records in LiteLLM_SpendLogs)"
+    return 0
 }
 
 # Restore Grafana dashboards
@@ -332,9 +343,7 @@ send_notification() {
     local status=$1
     local message=$2
 
-    if [ -x "${TELEGRAM_SCRIPT}" ]; then
-        "${TELEGRAM_SCRIPT}" custom "${status}" "Database Restore" "${message}" || true
-    fi
+    telegram_send "<b>Database Restore</b>\n\n${message}" "HTML" "${PROJECT_DIR}/.env" &>/dev/null || true
 }
 
 # ==================== Main ====================
@@ -343,6 +352,7 @@ main() {
     local start_time=$(date +%s)
 
     show_banner
+    check_requirements
 
     # Check if backup directory exists
     if [ ! -d "${BACKUP_BASE_DIR}" ]; then
@@ -458,8 +468,8 @@ Direct Restore:
 
 Examples:
   $0                                           # Interactive selection
-  $0 backups/daily/2025-10-28_030000          # Restore specific backup
-  $0 backups/latest                            # Restore latest backup
+  $0 /opt/backups/litellm/daily/2025-10-28_030000          # Restore specific backup
+  $0 /opt/backups/litellm/latest                            # Restore latest backup
 
 What will be restored:
   ✓ PostgreSQL database (all tables and data)

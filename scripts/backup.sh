@@ -11,16 +11,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-BACKUP_BASE_DIR="${PROJECT_DIR}/backups"
 
-# Load environment variables from .env
-if [ -f "${PROJECT_DIR}/.env" ]; then
-    while IFS='=' read -r key value; do
-        # Remove quotes and inline comments
-        value=$(echo "$value" | sed 's/^"//' | sed 's/".*$//' | sed "s/^'//" | sed "s/'.*$//")
-        export "$key=$value"
-    done < <(grep -E '^TELEGRAM_[A-Z_]+=' "${PROJECT_DIR}/.env")
+COMMON_LIB="${SCRIPT_DIR}/lib/common.sh"
+if [ -f "${COMMON_LIB}" ]; then
+    source "${COMMON_LIB}"
+else
+    echo "ERROR: Missing ${COMMON_LIB}"
+    exit 1
 fi
+
+TELEGRAM_LIB="${SCRIPT_DIR}/lib/telegram.sh"
+if [ -f "${TELEGRAM_LIB}" ]; then
+    source "${TELEGRAM_LIB}"
+else
+    echo "ERROR: Missing ${TELEGRAM_LIB}"
+    exit 1
+fi
+
+telegram_load_env "${PROJECT_DIR}/.env"
+BACKUP_BASE_DIR="${BACKUP_BASE_DIR:-/opt/backups/litellm}"
 
 # Database configuration
 DB_HOST="localhost"
@@ -34,31 +43,18 @@ DB_CONTAINER="litellm_db"
 DAILY_RETENTION=3      # Keep 3 daily backups (rest on remote)
 WEEKLY_RETENTION=0     # Disabled (kept only on remote)
 MONTHLY_RETENTION=0    # Disabled (kept only on remote)
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Disk safety limits
+MIN_FREE_GB=10               # Ensure at least this much free space on /
+MAX_DISK_USAGE_PERCENT=85    # Prune backups if / is above this usage
+MIN_BACKUPS_TO_KEEP=2        # Never delete below this count across all backups
 
 # ==================== Functions ====================
 
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+# Globals for Telegram details
+HOSTNAME="$(hostname)"
+DB_BACKUP_SIZE="N/A"
+GRAFANA_DASHBOARD_COUNT="N/A"
+CONFIGS_BACKED_UP="N/A"
 
 # Send Telegram notification
 send_telegram() {
@@ -66,7 +62,10 @@ send_telegram() {
     local message=$2
 
     # Check if Telegram is configured
-    if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+    if ! telegram_is_configured; then
+        telegram_load_env "${PROJECT_DIR}/.env"
+    fi
+    if ! telegram_is_configured; then
         log_warning "Telegram not configured, skipping notification"
         return 0
     fi
@@ -78,18 +77,18 @@ send_telegram() {
 ${message}
 <i>$(date '+%Y-%m-%d %H:%M:%S')</i>"
 
-    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-        -d "chat_id=${TELEGRAM_CHAT_ID}" \
-        -d "text=${text}" \
-        -d "parse_mode=HTML" \
-        > /dev/null 2>&1 && log_info "Telegram notification sent" || log_warning "Failed to send Telegram notification"
+    if telegram_send "${text}" "HTML" "${PROJECT_DIR}/.env"; then
+        log_info "Telegram notification sent"
+    else
+        log_warning "Failed to send Telegram notification"
+    fi
 }
 
 # Check if required commands exist
 check_requirements() {
     local missing_cmds=()
 
-    for cmd in docker pg_dump date find ln; do
+    for cmd in docker pg_dump date find ln gzip du stat; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_cmds+=("$cmd")
         fi
@@ -175,6 +174,7 @@ backup_database() {
     fi
 
     local db_size=$(du -h "${db_backup_file}" | cut -f1)
+    DB_BACKUP_SIZE="${db_size}"
     log_success "Database backed up compressed (${db_size}): ${db_backup_file}"
 
     # Verify backup can be read (gzip test)
@@ -196,6 +196,7 @@ backup_grafana() {
         cp -r "${PROJECT_DIR}/grafana/provisioning" "${grafana_backup_dir}/"
 
         local dashboard_count=$(find "${grafana_backup_dir}/provisioning/dashboards" -name "*.json" 2>/dev/null | wc -l)
+        GRAFANA_DASHBOARD_COUNT="${dashboard_count}"
         log_success "Grafana backed up (${dashboard_count} dashboards)"
     else
         log_warning "Grafana provisioning directory not found"
@@ -228,6 +229,7 @@ backup_configs() {
         fi
     done
 
+    CONFIGS_BACKED_UP="${backed_up}"
     log_success "Backed up ${backed_up} configuration files"
 }
 
@@ -243,7 +245,7 @@ create_inventory() {
 LiteLLM Backup Inventory
 ===============================================
 Backup Date: $(date '+%Y-%m-%d %H:%M:%S')
-Backup Type: $(basename $(dirname ${backup_dir}))
+Backup Type: $(basename "$(dirname "${backup_dir}")")
 Backup Location: ${backup_dir}
 ===============================================
 
@@ -254,7 +256,7 @@ EOF
         awk '{print $9 "\t" $5}' >> "${inventory_file}"
 
     echo "" >> "${inventory_file}"
-    echo "Total Size: $(du -sh ${backup_dir} | cut -f1)" >> "${inventory_file}"
+    echo "Total Size: $(du -sh "${backup_dir}" | cut -f1)" >> "${inventory_file}"
 
     log_success "Inventory created"
 }
@@ -264,7 +266,7 @@ create_restore_script() {
     local backup_dir=$1
     local restore_script="${backup_dir}/RESTORE.sh"
 
-    cat > "${restore_script}" << 'RESTORE_EOF'
+    cat > "${restore_script}" << RESTORE_EOF
 #!/bin/bash
 # Auto-generated restore script
 
@@ -272,16 +274,23 @@ set -e
 
 BACKUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "🔄 Restoring from: ${BACKUP_DIR}"
+PROJECT_DIR="${PROJECT_DIR}"
+DB_HOST="${DB_HOST}"
+DB_PORT="${DB_PORT}"
+DB_USER="${DB_USER}"
+DB_PASSWORD="${DB_PASSWORD}"
+DB_NAME="${DB_NAME}"
 
 # Stop services
 echo "⏸️  Stopping services..."
-cd "$(dirname $(dirname ${BACKUP_DIR}))"
+cd "${PROJECT_DIR}"
 docker compose stop litellm litellm-metrics-exporter
 
 # Restore database
 echo "🗄️  Restoring PostgreSQL database..."
-if [ -f "${BACKUP_DIR}/postgresql_litellm.sql" ]; then
-    PGPASSWORD=dbpassword9090 psql -h localhost -p 5433 -U llmproxy litellm < "${BACKUP_DIR}/postgresql_litellm.sql"
+if [ -f "${BACKUP_DIR}/postgresql_${DB_NAME}.sql.gz" ]; then
+    PGPASSWORD="${DB_PASSWORD}" gzip -dc "${BACKUP_DIR}/postgresql_${DB_NAME}.sql.gz" | \
+        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" "${DB_NAME}"
     echo "✅ Database restored"
 else
     echo "⚠️  Database backup not found"
@@ -293,7 +302,7 @@ if [ -d "${BACKUP_DIR}/configs" ]; then
     for file in ${BACKUP_DIR}/configs/*.backup; do
         if [ -f "$file" ]; then
             original_name=$(basename "$file" .backup)
-            cp "$file" "$(dirname $(dirname ${BACKUP_DIR}))/${original_name}"
+            cp "$file" "${PROJECT_DIR}/${original_name}"
             echo "  ✅ Restored ${original_name}"
         fi
     done
@@ -302,7 +311,7 @@ fi
 # Restore Grafana
 echo "📊 Restoring Grafana dashboards..."
 if [ -d "${BACKUP_DIR}/grafana/provisioning" ]; then
-    cp -r "${BACKUP_DIR}/grafana/provisioning" "$(dirname $(dirname ${BACKUP_DIR}))/grafana/"
+    cp -r "${BACKUP_DIR}/grafana/provisioning" "${PROJECT_DIR}/grafana/"
     echo "✅ Grafana restored"
 fi
 
@@ -331,26 +340,87 @@ rotate_backups() {
 
     log_info "Rotating ${backup_type} backups (keeping last ${retention})..."
 
-    # Find and sort backups by modification time (oldest first)
-    local backup_count=$(find "${backup_subdir}" -maxdepth 1 -type d -not -path "${backup_subdir}" | wc -l)
+    shopt -s nullglob
+    local backup_dirs=( "${backup_subdir}"/* )
+    shopt -u nullglob
+
+    local filtered_dirs=()
+    for dir in "${backup_dirs[@]}"; do
+        [ -d "${dir}" ] && filtered_dirs+=( "${dir}" )
+    done
+
+    local backup_count=${#filtered_dirs[@]}
 
     if [ ${backup_count} -gt ${retention} ]; then
         local to_delete=$((backup_count - retention))
 
-        find "${backup_subdir}" -maxdepth 1 -type d -not -path "${backup_subdir}" -printf '%T+ %p\n' | \
-            sort | \
-            head -n ${to_delete} | \
-            cut -d' ' -f2- | \
-            while read dir; do
-                local size=$(du -sh "$dir" | cut -f1)
-                log_warning "Removing old backup: $(basename $dir) (${size})"
-                rm -rf "$dir"
-            done
+        mapfile -t sorted_dirs < <(
+            printf '%s\n' "${filtered_dirs[@]}" | \
+                xargs -I{} stat -c '%Y %n' {} | \
+                sort -n | \
+                awk '{print $2}'
+        )
+
+        for dir in "${sorted_dirs[@]:0:${to_delete}}"; do
+            local size=$(du -sh "$dir" | cut -f1)
+            log_warning "Removing old backup: $(basename "$dir") (${size})"
+            rm -rf "$dir"
+        done
 
         log_success "Removed ${to_delete} old ${backup_type} backup(s)"
     else
         log_info "No ${backup_type} backups to rotate (${backup_count}/${retention})"
     fi
+}
+
+# Prune oldest backups if disk space is low
+prune_backups_if_low_space() {
+    local usage_percent
+    usage_percent=$(df -P / | awk 'NR==2 {gsub(/%/, "", $5); print $5}')
+    local free_gb
+    free_gb=$(df -P / | awk 'NR==2 {print int($4/1024/1024)}')
+
+    if [ "${usage_percent}" -lt "${MAX_DISK_USAGE_PERCENT}" ] && [ "${free_gb}" -ge "${MIN_FREE_GB}" ]; then
+        return 0
+    fi
+
+    log_warning "Low disk space detected: / ${usage_percent}% used, ${free_gb}GB free"
+    log_info "Pruning oldest backups until disk space is healthy..."
+
+    mapfile -t all_backups < <(
+        find "${BACKUP_BASE_DIR}" \
+            -mindepth 2 -maxdepth 2 \
+            -type d \
+            \( -path "${BACKUP_BASE_DIR}/daily/*" -o -path "${BACKUP_BASE_DIR}/weekly/*" -o -path "${BACKUP_BASE_DIR}/monthly/*" \) \
+            -printf '%T@ %p\n' 2>/dev/null | \
+            sort -n | \
+            awk '{print $2}'
+    )
+
+    local total_backups=${#all_backups[@]}
+    if [ "${total_backups}" -le "${MIN_BACKUPS_TO_KEEP}" ]; then
+        log_warning "Only ${total_backups} backups found; skipping prune to avoid data loss"
+        return 0
+    fi
+
+    for dir in "${all_backups[@]}"; do
+        if [ "${total_backups}" -le "${MIN_BACKUPS_TO_KEEP}" ]; then
+            log_warning "Reached minimum backup count (${MIN_BACKUPS_TO_KEEP}), stopping prune"
+            break
+        fi
+
+        local size=$(du -sh "$dir" | cut -f1)
+        log_warning "Pruning backup: $(basename "$dir") (${size})"
+        rm -rf "$dir"
+        total_backups=$((total_backups - 1))
+
+        usage_percent=$(df -P / | awk 'NR==2 {gsub(/%/, "", $5); print $5}')
+        free_gb=$(df -P / | awk 'NR==2 {print int($4/1024/1024)}')
+        if [ "${usage_percent}" -lt "${MAX_DISK_USAGE_PERCENT}" ] && [ "${free_gb}" -ge "${MIN_FREE_GB}" ]; then
+            log_success "Disk space healthy: / ${usage_percent}% used, ${free_gb}GB free"
+            break
+        fi
+    done
 }
 
 # Update latest symlink
@@ -413,7 +483,10 @@ main() {
     if ! backup_database "${backup_dir}"; then
         log_error "Database backup failed"
         write_backup_status "failed" "${backup_dir}" "Database backup failed"
-        send_telegram "error" "Database backup failed!"
+        send_telegram "error" "Backup failed
+Host: ${HOSTNAME}
+Dir: ${backup_dir}
+Type: ${backup_type}"
         exit 1
     fi
 
@@ -432,6 +505,7 @@ main() {
     rotate_backups "daily" ${DAILY_RETENTION}
     rotate_backups "weekly" ${WEEKLY_RETENTION}
     rotate_backups "monthly" ${MONTHLY_RETENTION}
+    prune_backups_if_low_space
 
     # Write status
     write_backup_status "success" "${backup_dir}"
@@ -440,6 +514,7 @@ main() {
     local end_time=$(date +%s)
     local duration=$((end_time - start_time))
     local backup_size=$(du -sh "${backup_dir}" | cut -f1)
+    local disk_status=$(df -h / | awk 'NR==2 {print $4 " free (" $5 " used)"}')
 
     echo ""
     log_success "╔════════════════════════════════════════════╗"
@@ -452,9 +527,15 @@ main() {
 
     # Send success notification to Telegram
     send_telegram "success" "Backup completed
+Host: ${HOSTNAME}
+Type: ${backup_type}
+Dir: ${backup_dir}
 Size: ${backup_size}
-Duration: ${duration}s
-Type: ${backup_type}"
+DB dump: ${DB_BACKUP_SIZE}
+Grafana dashboards: ${GRAFANA_DASHBOARD_COUNT}
+Configs: ${CONFIGS_BACKED_UP}
+Disk: ${disk_status}
+Duration: ${duration}s"
 }
 
 # Run main function

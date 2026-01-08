@@ -9,33 +9,43 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 STATUS_FILE="${PROJECT_DIR}/logs/.health_status"
+COMMON_LIB="${SCRIPT_DIR}/lib/common.sh"
+if [ -f "${COMMON_LIB}" ]; then
+    source "${COMMON_LIB}"
+else
+    echo "ERROR: Missing ${COMMON_LIB}"
+    exit 1
+fi
+
+TELEGRAM_LIB="${SCRIPT_DIR}/lib/telegram.sh"
+if [ -f "${TELEGRAM_LIB}" ]; then
+    source "${TELEGRAM_LIB}"
+    telegram_load_env "${PROJECT_DIR}/.env"
+else
+    echo "ERROR: Missing ${TELEGRAM_LIB}"
+    exit 1
+fi
+
+BACKUP_BASE_DIR="${BACKUP_BASE_DIR:-/opt/backups/litellm}"
 
 # Загрузить только необходимые переменные окружения
 if [ -f "${PROJECT_DIR}/.env" ]; then
-    # Загрузить только TELEGRAM переменные, игнорируя пробелы и комментарии
-    export TELEGRAM_BOT_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
-    export TELEGRAM_CHAT_ID=$(grep "^TELEGRAM_CHAT_ID" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
     export BACKUP_REMOTE_HOST=$(grep "^BACKUP_REMOTE_HOST" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
     export BACKUP_REMOTE_USER=$(grep "^BACKUP_REMOTE_USER" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
     export BACKUP_REMOTE_PATH=$(grep "^BACKUP_REMOTE_PATH" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
+    export BACKUP_REMOTE_PORT=$(grep "^BACKUP_REMOTE_PORT" "${PROJECT_DIR}/.env" | cut -d'=' -f2- | sed 's/#.*//' | tr -d ' "')
 fi
-
-# Цвета
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
 
 # Счетчики
 CHECKS_TOTAL=0
 CHECKS_PASSED=0
 CHECKS_FAILED=0
 ERRORS=()
-
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+DISK_ROOT_USAGE="N/A"
+DISK_DOCKER_USAGE="N/A"
+MEM_USAGE="N/A"
+BACKUP_AGE_HOURS="N/A"
+SSL_SUMMARY=""
 
 log_success() {
     echo -e "${GREEN}[✓]${NC} $1"
@@ -48,19 +58,17 @@ log_error() {
     ERRORS+=("$1")
 }
 
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
 # Отправка в Telegram
 send_telegram() {
     local message="$1"
 
-    if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
-        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="${TELEGRAM_CHAT_ID}" \
-            -d text="${message}" \
-            -d parse_mode="HTML" &>/dev/null || true
+    telegram_send "${message}" "HTML" "${PROJECT_DIR}/.env" &>/dev/null || true
+}
+
+check_requirements() {
+    require_cmds docker curl openssl df free || exit 1
+    if [ -n "${BACKUP_REMOTE_HOST:-}" ]; then
+        require_cmds ssh || exit 1
     fi
 }
 
@@ -84,6 +92,13 @@ save_status() {
 check_containers() {
     log_info "Проверка Docker контейнеров..."
     CHECKS_TOTAL=$((CHECKS_TOTAL + 6))
+
+    if ! docker ps &>/dev/null; then
+        log_error "Docker daemon не запущен"
+        CHECKS_FAILED=$((CHECKS_FAILED + 6))
+        ERRORS+=("Docker daemon не запущен")
+        return
+    fi
 
     local containers=(
         "litellm-litellm-1"
@@ -196,6 +211,7 @@ check_disk_space() {
 
     # Корневой раздел
     local root_usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+    DISK_ROOT_USAGE="${root_usage}%"
     if [ "$root_usage" -lt 80 ]; then
         log_success "Диск /: ${root_usage}% использовано"
     elif [ "$root_usage" -lt 90 ]; then
@@ -206,6 +222,7 @@ check_disk_space() {
 
     # Docker volumes
     local docker_usage=$(df /var/lib/docker | awk 'NR==2 {print $5}' | sed 's/%//' || echo "0")
+    DISK_DOCKER_USAGE="${docker_usage}%"
     if [ "$docker_usage" -lt 80 ]; then
         log_success "Docker volumes: ${docker_usage}% использовано"
     elif [ "$docker_usage" -lt 90 ]; then
@@ -221,6 +238,7 @@ check_memory() {
     CHECKS_TOTAL=$((CHECKS_TOTAL + 1))
 
     local mem_usage=$(free | awk 'NR==2 {printf "%.0f", $3/$2 * 100}')
+    MEM_USAGE="${mem_usage}%"
 
     if [ "$mem_usage" -lt 80 ]; then
         log_success "RAM: ${mem_usage}% использовано"
@@ -238,14 +256,22 @@ check_ssl_certificates() {
 
     local domains=("litellm.pro-4.ru" "dash.pro-4.ru")
 
+    SSL_SUMMARY=""
     for domain in "${domains[@]}"; do
-        local expiry=$(echo | openssl s_client -servername "$domain" -connect "$domain:443" 2>/dev/null | \
-            openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+        local openssl_cmd="echo | openssl s_client -servername \"${domain}\" -connect \"${domain}:443\" 2>/dev/null"
+        local expiry=""
+
+        if command -v timeout &> /dev/null; then
+            expiry=$(timeout 5 bash -c "${openssl_cmd}" | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+        else
+            expiry=$(bash -c "${openssl_cmd}" | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+        fi
 
         if [ -n "$expiry" ]; then
             local expiry_epoch=$(date -d "$expiry" +%s)
             local now_epoch=$(date +%s)
             local days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
+            SSL_SUMMARY+="${domain}: ${days_left}d"$'\n'
 
             if [ "$days_left" -gt 30 ]; then
                 log_success "SSL ${domain}: ${days_left} дней до истечения"
@@ -256,8 +282,11 @@ check_ssl_certificates() {
             fi
         else
             log_error "SSL ${domain}: не удалось проверить сертификат"
+            SSL_SUMMARY+="${domain}: error"$'\n'
         fi
     done
+
+    SSL_SUMMARY="${SSL_SUMMARY%$'\n'}"
 }
 
 # Проверка бэкапов
@@ -266,8 +295,9 @@ check_backups() {
     CHECKS_TOTAL=$((CHECKS_TOTAL + 2))
 
     # Последний локальный бэкап
-    if [ -L "${PROJECT_DIR}/backups/latest" ]; then
-        local backup_age=$(( ($(date +%s) - $(stat -c %Y "${PROJECT_DIR}/backups/latest")) / 3600 ))
+    if [ -L "${BACKUP_BASE_DIR}/latest" ]; then
+        local backup_age=$(( ($(date +%s) - $(stat -c %Y "${BACKUP_BASE_DIR}/latest")) / 3600 ))
+        BACKUP_AGE_HOURS="${backup_age}"
 
         if [ "$backup_age" -lt 30 ]; then
             log_success "Последний бэкап: ${backup_age} часов назад"
@@ -280,7 +310,9 @@ check_backups() {
 
     # Проверка офсайт бэкапа (если настроен)
     if [ -n "${BACKUP_REMOTE_HOST:-}" ]; then
-        if ssh -o ConnectTimeout=5 "${BACKUP_REMOTE_USER}@${BACKUP_REMOTE_HOST}" "test -L ${BACKUP_REMOTE_PATH}/latest" 2>/dev/null; then
+        local remote_port="${BACKUP_REMOTE_PORT:-22}"
+        if ssh -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -p "${remote_port}" \
+            "${BACKUP_REMOTE_USER}@${BACKUP_REMOTE_HOST}" "test -L ${BACKUP_REMOTE_PATH}/latest" 2>/dev/null; then
             log_success "Офсайт бэкап доступен"
         else
             log_error "Офсайт бэкап недоступен"
@@ -310,6 +342,8 @@ main() {
     log_info "  $(date '+%Y-%m-%d %H:%M:%S')"
     log_info "════════════════════════════════════════════"
     echo ""
+
+    check_requirements
 
     # Запуск проверок
     check_containers
@@ -342,15 +376,34 @@ main() {
 
     # Отправка уведомления при проблемах
     if [ ${CHECKS_FAILED} -gt 0 ]; then
-        local message="🚨 <b>LiteLLM Health Check FAILED</b>%0A%0A"
-        message+="Сервер: $(hostname)%0A"
-        message+="Время: $(date '+%Y-%m-%d %H:%M:%S')%0A"
-        message+="Пройдено: ${CHECKS_PASSED}/${CHECKS_TOTAL}%0A"
-        message+="Провалено: ${CHECKS_FAILED}%0A%0A"
-        message+="<b>Ошибки:</b>%0A"
+        local message="🚨 <b>LiteLLM Health Check FAILED</b>"
+        message+=$'\n\n'
+        message+="Сервер: $(hostname)"
+        message+=$'\n'
+        message+="Время: $(date '+%Y-%m-%d %H:%M:%S')"
+        message+=$'\n'
+        message+="Пройдено: ${CHECKS_PASSED}/${CHECKS_TOTAL}"
+        message+=$'\n'
+        message+="Провалено: ${CHECKS_FAILED}"
+        message+=$'\n\n'
+        message+="Сводка:"
+        message+=$'\n'
+        message+="Диск /: ${DISK_ROOT_USAGE}, Docker: ${DISK_DOCKER_USAGE}"
+        message+=$'\n'
+        message+="RAM: ${MEM_USAGE}"
+        message+=$'\n'
+        message+="Бэкап: ${BACKUP_AGE_HOURS} ч назад"
+        message+=$'\n'
+        message+="SSL:"
+        message+=$'\n'
+        message+="${SSL_SUMMARY}"
+        message+=$'\n\n'
+        message+="<b>Ошибки:</b>"
+        message+=$'\n'
 
         for error in "${ERRORS[@]}"; do
-            message+="• ${error}%0A"
+            message+="• ${error}"
+            message+=$'\n'
         done
 
         send_telegram "$message"
@@ -363,10 +416,24 @@ main() {
 
         # Уведомление о восстановлении (если предыдущий статус был failed)
         if [ "$previous_status" == "failed" ]; then
-            local message="✅ <b>LiteLLM RECOVERED</b>%0A%0A"
-            message+="Сервер: $(hostname)%0A"
-            message+="Время: $(date '+%Y-%m-%d %H:%M:%S')%0A"
-            message+="Все проверки пройдены: ${CHECKS_PASSED}/${CHECKS_TOTAL}%0A%0A"
+            local message="✅ <b>LiteLLM RECOVERED</b>"
+            message+=$'\n\n'
+            message+="Сервер: $(hostname)"
+            message+=$'\n'
+            message+="Время: $(date '+%Y-%m-%d %H:%M:%S')"
+            message+=$'\n'
+            message+="Все проверки пройдены: ${CHECKS_PASSED}/${CHECKS_TOTAL}"
+            message+=$'\n'
+            message+="Диск /: ${DISK_ROOT_USAGE}, Docker: ${DISK_DOCKER_USAGE}"
+            message+=$'\n'
+            message+="RAM: ${MEM_USAGE}"
+            message+=$'\n'
+            message+="Бэкап: ${BACKUP_AGE_HOURS} ч назад"
+            message+=$'\n'
+            message+="SSL:"
+            message+=$'\n'
+            message+="${SSL_SUMMARY}"
+            message+=$'\n\n'
             message+="Проблема устранена!"
 
             send_telegram "$message"
@@ -377,10 +444,23 @@ main() {
 
         # Отправляем успешное уведомление раз в день (только в 03:00)
         if [ "$(date +%H:%M)" == "03:00" ]; then
-            local message="✅ <b>LiteLLM Health Check OK</b>%0A%0A"
-            message+="Сервер: $(hostname)%0A"
-            message+="Время: $(date '+%Y-%m-%d %H:%M:%S')%0A"
+            local message="✅ <b>LiteLLM Health Check OK</b>"
+            message+=$'\n\n'
+            message+="Сервер: $(hostname)"
+            message+=$'\n'
+            message+="Время: $(date '+%Y-%m-%d %H:%M:%S')"
+            message+=$'\n'
             message+="Все проверки пройдены: ${CHECKS_PASSED}/${CHECKS_TOTAL}"
+            message+=$'\n'
+            message+="Диск /: ${DISK_ROOT_USAGE}, Docker: ${DISK_DOCKER_USAGE}"
+            message+=$'\n'
+            message+="RAM: ${MEM_USAGE}"
+            message+=$'\n'
+            message+="Бэкап: ${BACKUP_AGE_HOURS} ч назад"
+            message+=$'\n'
+            message+="SSL:"
+            message+=$'\n'
+            message+="${SSL_SUMMARY}"
 
             send_telegram "$message"
         fi
