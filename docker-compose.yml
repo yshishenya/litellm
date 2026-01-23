@@ -35,6 +35,10 @@ services:
     image: postgres:16
     restart: always
     container_name: litellm_db
+    command:
+      - "postgres"
+      - "-c"
+      - "idle_in_transaction_session_timeout=5min"
     environment:
       POSTGRES_DB: litellm
       POSTGRES_USER: llmproxy

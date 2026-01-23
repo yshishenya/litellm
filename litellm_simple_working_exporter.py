@@ -232,6 +232,7 @@ class LiteLLMMetricsExporter:
                 database=DB_NAME,
                 cursor_factory=RealDictCursor
             )
+            self.connection.autocommit = True
             logger.info("✓ Connected to PostgreSQL")
         except Exception as e:
             logger.error(f"Database connection failed: {e}")
