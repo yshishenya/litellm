@@ -148,6 +148,24 @@ services:
       timeout: 10s
       retries: 3
 
+  backup-tool:
+    build:
+      context: .
+      dockerfile: backup-tool/Dockerfile
+    env_file:
+      - ./.env
+      - ./backup-tool/.env
+    volumes:
+      - ./:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/backups/litellm:/opt/backups/litellm
+      - /home/yan/.ssh:/root/.ssh:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    working_dir: /workspace
+    command: ["schedule", "--env", "/workspace/backup-tool/.env", "--project-dir", "/workspace"]
+    restart: always
+
 
 volumes:
   prometheus_data:

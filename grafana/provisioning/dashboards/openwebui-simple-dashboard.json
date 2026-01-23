@@ -318,7 +318,7 @@
                 {
                   "title": "🔍 Подробная информация о пользователе",
                   "url": "/d/openwebui-user-simple?var-selected_user=${__data.fields['👤 Пользователь']}&from=${__from}&to=${__to}",
-                  "targetBlank": false
+                   "targetBlank": true
                 }
               ]}
             ]
