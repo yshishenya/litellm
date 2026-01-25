@@ -197,7 +197,13 @@ async def route_request(
 
     elif "user_config" in data:
         router_config = data.pop("user_config")
-        user_router = litellm.Router(**router_config)
+
+        # Filter router_config to only include valid Router.__init__ arguments
+        # This prevents TypeError when invalid parameters are stored in the database
+        valid_args = litellm.Router.get_valid_args()
+        filtered_config = {k: v for k, v in router_config.items() if k in valid_args}
+
+        user_router = litellm.Router(**filtered_config)
         ret_val = getattr(user_router, f"{route_type}")(**data)
         user_router.discard()
         return ret_val
@@ -260,12 +266,9 @@ async def route_request(
         ):
             return getattr(llm_router, f"{route_type}")(**data)
 
-        elif data["model"] in llm_router.deployment_names:
-            return getattr(llm_router, f"{route_type}")(
-                **data, specific_deployment=True
-            )
-
         elif data["model"] not in router_model_names:
+            # Check wildcards before checking deployment_names
+            # Priority: 1. Exact model_name match, 2. Wildcard match, 3. deployment_names match
             if llm_router.router_general_settings.pass_through_all_models:
                 return getattr(litellm, f"{route_type}")(**data)
             elif (
@@ -273,6 +276,11 @@ async def route_request(
                 or len(llm_router.pattern_router.patterns) > 0
             ):
                 return getattr(llm_router, f"{route_type}")(**data)
+            elif data["model"] in llm_router.deployment_names:
+                # Only match deployment_names if no wildcard matched
+                return getattr(llm_router, f"{route_type}")(
+                    **data, specific_deployment=True
+                )
             elif route_type in [
                 "amoderation",
                 "aget_responses",
