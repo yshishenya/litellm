@@ -10,6 +10,7 @@ class JsonFormatter(logging.Formatter):
         return dt.isoformat()
 
     def format(self, record):
+        """Convert a logging record to a JSON-formatted string."""
         json_record = {
             "message": record.getMessage(),
             "level": record.levelname,
