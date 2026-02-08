@@ -46,7 +46,7 @@ class RealtimeClient:
         self.output_stream = None
 
     async def connect(self):
-        """Connect to LiteLLM proxy realtime endpoint."""
+        """Connect to the LiteLLM proxy realtime endpoint."""
         print(f"Connecting to {self.url}...")
         
         headers = {}
@@ -85,7 +85,19 @@ class RealtimeClient:
         print("✓ Session configuration sent")
 
     async def receive_messages(self):
-        """Receive and process messages from the server."""
+        """Receive and process messages from the server.
+        
+        This asynchronous function listens for messages from a WebSocket connection and
+        processes them based on their event type. It handles various events such as
+        session creation, response updates, and errors, while also managing audio data
+        for playback. The function ensures that it gracefully handles connection
+        closures and JSON parsing errors, maintaining the active state of the
+        connection throughout its execution.
+        
+        Args:
+            self: The instance of the class that contains the WebSocket connection and audio
+                queue.
+        """
         try:
             async for message in self.ws:
                 if not self.is_active:
@@ -137,7 +149,7 @@ class RealtimeClient:
             self.is_active = False
 
     async def send_audio_chunk(self, audio_bytes: bytes):
-        """Send audio chunk to server."""
+        """Send an audio chunk to the server."""
         if not self.is_active or not self.ws:
             return
 
@@ -182,7 +194,14 @@ class RealtimeClient:
                 self.input_stream.close()
 
     async def play_audio(self):
-        """Play audio responses from the server."""
+        """Play audio responses from the server.
+        
+        This function initializes the audio playback by opening an output stream  with
+        the specified format, channels, and sample rate. It continuously  retrieves
+        audio data from the audio queue while the playback is active,  handling
+        timeouts and potential errors gracefully. Finally, it ensures  that the output
+        stream is properly stopped and closed after playback is  complete.
+        """
         print("🔊 Starting audio playback...")
 
         self.output_stream = self.pyaudio.open(
@@ -211,7 +230,7 @@ class RealtimeClient:
                 self.output_stream.close()
 
     async def close(self):
-        """Close the connection and cleanup."""
+        """Close the connection and clean up resources."""
         self.is_active = False
 
         if self.ws:
