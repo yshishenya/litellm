@@ -108,6 +108,16 @@ class TestUpdateMetadataFieldsEmptyCollections:
         assert updated_kv["metadata"]["secret_manager_settings"] == {}
 
     @patch("litellm.proxy.management_endpoints.common_utils._premium_user_check")
+    def test_empty_string_does_not_trigger_premium_check(self, mock_premium_check):
+        """Blank string premium fields (e.g. team_member_key_duration) must not 403."""
+        updated_kv = {
+            "team_id": "test-team",
+            "team_member_key_duration": "",
+        }
+        _update_metadata_fields(updated_kv=updated_kv)
+        mock_premium_check.assert_not_called()
+
+    @patch("litellm.proxy.management_endpoints.common_utils._premium_user_check")
     def test_none_value_does_not_trigger_premium_check(self, mock_premium_check):
         """None values for premium fields should be silently ignored."""
         updated_kv = {

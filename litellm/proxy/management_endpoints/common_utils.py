@@ -371,7 +371,14 @@ def _update_metadata_field(updated_kv: dict, field_name: str) -> None:
         # any enterprise features (see issue #20304).  However, we still
         # proceed with the update so that users can intentionally clear a
         # previously-set field by sending an empty list/dict.
-        if value is not None and value != [] and value != {}:
+        # Also skip blank strings ("", "   "), which can be sent from text
+        # form fields like team_member_key_duration.
+        if (
+            value is not None
+            and value != []
+            and value != {}
+            and not (isinstance(value, str) and value.strip() == "")
+        ):
             _premium_user_check()
 
     if field_name in updated_kv and updated_kv[field_name] is not None:
