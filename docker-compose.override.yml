@@ -1,0 +1,6 @@
+services:
+  litellm:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    image: litellm:local
