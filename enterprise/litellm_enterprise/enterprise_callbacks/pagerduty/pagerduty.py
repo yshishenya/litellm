@@ -82,10 +82,7 @@ class PagerDutyAlerting(SlackAlerting):
     # ------------------ MAIN LOGIC ------------------ #
 
     async def async_log_failure_event(self, kwargs, response_obj, start_time, end_time):
-        """
-        Record a failure event. Only send an alert to PagerDuty if the
-        configured *failure* threshold is exceeded in the specified window.
-        """
+        """Record a failure event and send an alert if the failure threshold is exceeded."""
         now = datetime.now(timezone.utc)
         standard_logging_payload: Optional[StandardLoggingPayload] = kwargs.get(
             "standard_logging_object"
@@ -161,10 +158,7 @@ class PagerDutyAlerting(SlackAlerting):
     async def hanging_response_handler(
         self, request_data: Optional[dict], user_api_key_dict: UserAPIKeyAuth
     ):
-        """
-        Checks if request completed by the time 'hanging_threshold_seconds' elapses.
-        If not, we classify it as a hanging request.
-        """
+        """Handles hanging requests by checking if they complete within a threshold."""
         verbose_logger.debug(
             f"Inside Hanging Response Handler!..sleeping for {self.pagerduty_alerting_args.get('hanging_threshold_seconds', PAGERDUTY_DEFAULT_HANGING_THRESHOLD_SECONDS)} seconds"
         )
@@ -232,11 +226,7 @@ class PagerDutyAlerting(SlackAlerting):
         threshold: int,
         alert_prefix: str,
     ):
-        """
-        1. Prune old events
-        2. If threshold is reached, build alert, send to PagerDuty
-        3. Clear those events
-        """
+        """Prune old events and send an alert if thresholds are crossed."""
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
         pruned = [e for e in events if e.get("timestamp", datetime.min) > cutoff]
 
@@ -267,10 +257,7 @@ class PagerDutyAlerting(SlackAlerting):
     def _build_error_summaries(
         self, events: List[PagerDutyInternalEvent], max_errors: int = 5
     ) -> List[PagerDutyInternalEvent]:
-        """
-        Build short text summaries for the last `max_errors`.
-        Example: "ValueError (code: 500, provider: openai)"
-        """
+        """Build short text summaries for the last max_errors."""
         recent = events[-max_errors:]
         summaries = []
         for fe in recent:

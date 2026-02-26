@@ -223,6 +223,7 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
     ) -> bool:
         ## check if the user has access to the unified file id
 
+        """Check if the user has access to the unified file id."""
         user_id = user_api_key_dict.user_id
         managed_file = await self.prisma_client.db.litellm_managedfiletable.find_first(
             where={"unified_file_id": unified_file_id}
@@ -239,6 +240,7 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
         self, unified_object_id: str, user_api_key_dict: UserAPIKeyAuth
     ) -> bool:
         ## check if the user has access to the unified object id
+        """Check if the user has access to the unified object id."""
         user_id = user_api_key_dict.user_id
         managed_object = (
             await self.prisma_client.db.litellm_managedobjecttable.find_first(
@@ -1009,6 +1011,20 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
     async def afile_retrieve(
         self, file_id: str, litellm_parent_otel_span: Optional[Span], llm_router=None
     ) -> OpenAIFileObject:
+        """Retrieve a managed file object based on the provided file ID.
+        
+        This function first attempts to retrieve a unified file ID using the  provided
+        `file_id` and `litellm_parent_otel_span`. It handles three  cases: if the file
+        is not managed, if the managed file exists in the  database, and if the managed
+        file exists but the file object is missing.  In the latter case, it fetches the
+        file object from the provider using  the `llm_router`. Exceptions are raised
+        for missing files or required  components.
+        
+        Args:
+            file_id (str): The ID of the file to retrieve.
+            litellm_parent_otel_span (Optional[Span]): The parent OpenTelemetry span.
+            llm_router: Optional router for fetching file objects from the provider.
+        """
         stored_file_object = await self.get_unified_file_id(
             file_id, litellm_parent_otel_span
         )
@@ -1085,20 +1101,21 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
     async def _get_batches_referencing_file(
         self, file_id: str
     ) -> List[Dict[str, Any]]:
-        """
-        Find batches in non-terminal states that reference this file.
+        # Prepare list of file IDs to check (both unified and provider IDs)
+        """Find batches in non-terminal states that reference a specified file.
         
-        Non-terminal states: validating, in_progress, finalizing
-        Terminal states: completed, complete, failed, expired, cancelled
+        This function retrieves batches that are currently in non-terminal states, such
+        as validating, in_progress, or finalizing, and checks if they reference the
+        provided file ID. It first attempts to obtain model-specific file IDs for the
+        unified file ID, and if successful, includes those in the search. The function
+        limits the number of returned batches to a maximum of 10 for display purposes.
         
         Args:
-            file_id: The unified file ID to check
-            
+            file_id (str): The unified file ID to check.
+        
         Returns:
-            List of batch objects referencing this file in non-terminal state
-            (max 10 for error message display)
+            List[Dict[str, Any]]: A list of batch objects referencing the specified file in a non-terminal state.
         """
-        # Prepare list of file IDs to check (both unified and provider IDs)
         file_ids_to_check = [file_id]
         
         # Get model-specific file IDs for this unified file ID if it's a managed file
@@ -1158,20 +1175,18 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
         return referencing_batches
 
     async def _check_file_deletion_allowed(self, file_id: str) -> None:
-        """
-        Check if file deletion should be blocked due to batch references.
+        # Check if batch polling is enabled
+        """Check if file deletion should be blocked due to batch references.
         
-        Blocks deletion if:
-        1. File is referenced by any batch in non-terminal state, AND
-        2. Batch polling is configured (user wants cost tracking)
+        This function determines whether a file can be deleted based on its references
+        in non-terminal batches when batch polling is enabled. If batch polling is not
+        configured, deletion is allowed. If the file is referenced by any non-terminal
+        batches, an HTTPException is raised with a detailed error message indicating
+        the number of referencing batches and their statuses.
         
         Args:
-            file_id: The unified file ID to check
-            
-        Raises:
-            HTTPException: If file deletion should be blocked
+            file_id: The unified file ID to check.
         """
-        # Check if batch polling is enabled
         if not self._is_batch_polling_enabled():
             # Batch polling not configured, allow deletion
             return
@@ -1222,6 +1237,21 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
     ) -> OpenAIFileObject:
 
         # Check if file deletion should be blocked due to batch references
+        """Delete a file identified by file_id.
+        
+        This function checks if the deletion of the specified file is allowed,
+        retrieves the model file ID mapping, and attempts to delete the file  using the
+        llm_router. It filters out conflicting keys from the provided  data to ensure
+        no duplicate keyword arguments are passed. Finally, it  either returns the
+        stored file object or the delete response, or raises  an exception if the file
+        is not found.
+        
+        Args:
+            file_id (str): The ID of the file to be deleted.
+            litellm_parent_otel_span (Optional[Span]): The parent OpenTelemetry span.
+            llm_router (Router): The router used for file deletion.
+            **data (Dict): Additional data to be passed for deletion.
+        """
         await self._check_file_deletion_allowed(file_id)
 
         # file_id = convert_b64_uid_to_unified_uid(file_id)
