@@ -222,7 +222,7 @@ class LiteLLMMetricsExporter:
         self.initialized = True
 
     def connect_to_db(self):
-        """Connect to PostgreSQL database"""
+        """Connect to PostgreSQL database."""
         try:
             self.connection = psycopg2.connect(
                 host=DB_HOST,
