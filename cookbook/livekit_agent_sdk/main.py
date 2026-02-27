@@ -17,13 +17,15 @@ MODEL = os.getenv("LITELLM_MODEL", "grok-voice-agent")
 
 
 async def run_voice_agent():
-    """
-    Simple voice agent that:
-    1. Connects to xAI realtime API through LiteLLM proxy
-    2. Sends a user message
-    3. Streams back the response
-    """
     
+    """Simple voice agent that connects to xAI realtime API.
+    
+    This function establishes a WebSocket connection to the xAI realtime API
+    through a LiteLLM proxy. It sends a user message and streams back the
+    response, handling both text and audio modalities. The function also  manages
+    connection events and captures transcript deltas until the  response is
+    complete.
+    """
     url = f"ws://{PROXY_URL.replace('http://', '').replace('https://', '')}/v1/realtime?model={MODEL}"
     headers = {"Authorization": f"Bearer {API_KEY}"}
     
@@ -92,7 +94,7 @@ async def run_voice_agent():
 
 
 def main():
-    """Run the voice agent"""
+    """Run the voice agent."""
     print("=" * 70)
     print("LiveKit xAI Voice Agent via LiteLLM Proxy")
     print("=" * 70)

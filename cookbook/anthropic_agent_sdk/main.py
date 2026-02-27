@@ -84,7 +84,7 @@ async def interactive_chat():
 
 
 def main():
-    """Run interactive chat"""
+    """Run the interactive chat."""
     try:
         asyncio.run(interactive_chat())
     except KeyboardInterrupt:

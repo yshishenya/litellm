@@ -129,7 +129,7 @@ async def interactive_chat_with_mcp():
 
 
 def main():
-    """Run interactive chat with MCP"""
+    """Run interactive chat with MCP."""
     try:
         asyncio.run(interactive_chat_with_mcp())
     except KeyboardInterrupt:

@@ -20,9 +20,7 @@ class Config:
 
 
 async def fetch_available_models(base_url: str, api_key: str) -> list[str]:
-    """
-    Fetch available models from LiteLLM proxy /models endpoint
-    """
+    """Fetch available models from the LiteLLM proxy /models endpoint."""
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -47,9 +45,7 @@ async def fetch_available_models(base_url: str, api_key: str) -> list[str]:
 
 
 def setup_litellm_env(config: Config):
-    """
-    Configure environment variables to point Agent SDK to LiteLLM
-    """
+    """Configure environment variables for LiteLLM."""
     litellm_base_url = config.LITELLM_PROXY_URL.rstrip('/')
     os.environ["ANTHROPIC_BASE_URL"] = litellm_base_url
     os.environ["ANTHROPIC_API_KEY"] = config.LITELLM_API_KEY
@@ -57,9 +53,7 @@ def setup_litellm_env(config: Config):
 
 
 def print_header(base_url: str, current_model: str, has_mcp: bool = False):
-    """
-    Print the chat header
-    """
+    """Prints the chat header with connection details."""
     mcp_indicator = " + MCP" if has_mcp else ""
     print("=" * 70)
     print(f"🤖 Claude Agent SDK with LiteLLM Gateway{mcp_indicator} - Interactive Chat")
@@ -78,9 +72,7 @@ def print_header(base_url: str, current_model: str, has_mcp: bool = False):
 
 
 def handle_model_list(available_models: list[str], current_model: str):
-    """
-    Display available models
-    """
+    """Display available models."""
     print("\n📋 Available models:")
     for i, model in enumerate(available_models, 1):
         marker = "✓" if model == current_model else " "
@@ -88,12 +80,17 @@ def handle_model_list(available_models: list[str], current_model: str):
 
 
 def handle_model_switch(available_models: list[str], current_model: str) -> tuple[str, bool]:
-    """
-    Handle model switching
+    """def handle_model_switch(available_models: list[str], current_model: str) ->
+    tuple[str, bool]:
+    Handle model switching.  This function presents a list of available models to
+    the user and allows them to select a new model  by entering the corresponding
+    number. If a valid choice is made, it switches to the new model and  indicates
+    that a new conversation should start. If the input is invalid or the user
+    cancels, it  returns the current model without any changes.
     
-    Returns:
-        tuple: (new_model, should_restart_conversation)
-    """
+    Args:
+        available_models (list[str]): A list of models that can be switched to.
+        current_model (str): The model currently in use."""
     print("\n📋 Select a model:")
     for i, model in enumerate(available_models, 1):
         marker = "✓" if model == current_model else " "
@@ -117,8 +114,16 @@ def handle_model_switch(available_models: list[str], current_model: str) -> tupl
 
 
 async def stream_response(client, user_input: str):
-    """
-    Stream response from the agent
+    """Stream response from the agent.
+    
+    This asynchronous function interacts with a client to stream responses based on
+    user input. It initiates a query to the client and handles the streaming of
+    messages, displaying content as it arrives. The function also manages loading
+    indicators and error handling to ensure a smooth user experience.
+    
+    Args:
+        client: An object that facilitates communication with the agent.
+        user_input (str): The input string provided by the user for querying the agent.
     """
     print("\n🤖 Assistant: ", end='', flush=True)
     
