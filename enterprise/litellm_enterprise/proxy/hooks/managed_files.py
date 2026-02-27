@@ -1009,6 +1009,15 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
     async def afile_retrieve(
         self, file_id: str, litellm_parent_otel_span: Optional[Span], llm_router=None
     ) -> OpenAIFileObject:
+        """Retrieve a managed file object based on the provided file ID.
+        
+        This asynchronous function attempts to retrieve a file object associated with
+        the given file_id. It first checks if the file is managed and exists in the
+        database. If the file object is not found, it raises an exception. If the  file
+        object is missing but the file is managed, it fetches the file from the
+        provider using the llm_router. The function handles various cases to ensure
+        the correct file object is returned or appropriate exceptions are raised.
+        """
         stored_file_object = await self.get_unified_file_id(
             file_id, litellm_parent_otel_span
         )
@@ -1225,6 +1234,20 @@ class _PROXY_LiteLLMManagedFiles(CustomLogger, BaseFileEndpoints):
         await self._check_file_deletion_allowed(file_id)
 
         # file_id = convert_b64_uid_to_unified_uid(file_id)
+        """Delete a file associated with the given file_id.
+        
+        This function retrieves the model file ID mapping for the specified  file_id
+        and attempts to delete the corresponding file using the  llm_router. If the
+        file is successfully deleted, it returns the  stored file object. If the
+        deletion is not successful, it raises  an exception indicating that the file
+        object was not found.
+        
+        Args:
+            file_id (str): The ID of the file to be deleted.
+            litellm_parent_otel_span (Optional[Span]): The parent OpenTelemetry span for tracing.
+            llm_router (Router): The router used to handle file deletion requests.
+            **data (Dict): Additional data to be passed to the deletion request.
+        """
         model_file_id_mapping = await self.get_model_file_id_mapping(
             [file_id], litellm_parent_otel_span
         )
