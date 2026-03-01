@@ -262,7 +262,7 @@ tail -50 /home/yan/litellm/backups/cron.log
 tail -50 /home/yan/litellm/backups/sync-cron.log
 
 # Проверить статус офсайт бэкапа
-ssh yan@135.181.215.121 "ls -lah /opt/backups/projects/litellm/ | tail"
+ssh yan@162.120.16.66 "ls -lah /opt/backups/projects/litellm/ | tail"
 ```
 
 **Решение:**
@@ -358,7 +358,7 @@ WHERE \"startTime\" < NOW() - INTERVAL '6 months';"
 # - Nginx + Certbot
 
 # 2. Скопировать последний бэкап
-scp -r yan@135.181.215.121:/opt/backups/projects/litellm/latest /tmp/restore
+scp -r yan@162.120.16.66:/opt/backups/projects/litellm/latest /tmp/restore
 
 # 3. Создать структуру
 mkdir -p /home/yan/litellm/{backups,scripts,grafana/provisioning}

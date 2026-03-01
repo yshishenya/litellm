@@ -163,7 +163,9 @@ services:
       - ./:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
       - /opt/backups/litellm:/opt/backups/litellm
-      - /home/yan/.ssh:/root/.ssh:ro
+      - /home/yan/.ssh/id_rsa:/root/.ssh/id_rsa:ro
+      - /home/yan/.ssh/id_rsa.pub:/root/.ssh/id_rsa.pub:ro
+      - /home/yan/.ssh/known_hosts:/root/.ssh/known_hosts:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     working_dir: /workspace
