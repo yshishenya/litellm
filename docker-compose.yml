@@ -132,8 +132,6 @@ services:
         COPY litellm_simple_working_exporter.py /app/litellm_simple_working_exporter.py
         WORKDIR /app
         CMD ["python", "litellm_simple_working_exporter.py"]
-    ports:
-      - "9090:9090"
     environment:
       DB_HOST: "db"
       DB_PORT: "5432"
