@@ -51,6 +51,17 @@ const MCPServerEdit: React.FC<MCPServerEditProps> = ({
 
   const [oauthAccessToken, setOauthAccessToken] = useState<string | null>(null);
 
+  // Watch form fields that affect tool fetching
+  const currentUrl = Form.useWatch("url", form);
+  const currentSpecPath = Form.useWatch("spec_path", form);
+  const currentServerName = Form.useWatch("server_name", form);
+  const currentAuthType = Form.useWatch("auth_type", form);
+  const currentStaticHeaders = Form.useWatch("static_headers", form);
+  const currentCredentials = Form.useWatch("credentials", form);
+  const currentAuthorizationUrl = Form.useWatch("authorization_url", form);
+  const currentTokenUrl = Form.useWatch("token_url", form);
+  const currentRegistrationUrl = Form.useWatch("registration_url", form);
+
   const persistEditUiState = () => {
     if (typeof window === "undefined") {
       return;
@@ -117,6 +128,21 @@ const MCPServerEdit: React.FC<MCPServerEditProps> = ({
     },
     onTokenReceived: (token) => {
       setOauthAccessToken(token?.access_token ?? null);
+      
+      if (token?.access_token) {
+        const credentials = {
+          access_token: token.access_token,
+          ...(token.refresh_token && { refresh_token: token.refresh_token }),
+          ...(token.expires_in && { expires_in: token.expires_in }),
+          ...(token.scope && { scope: token.scope }),
+        };
+        
+        form.setFieldsValue({ credentials });
+        
+        NotificationsManager.success(
+          "OAuth authorization successful! Please click 'Update MCP Server' to save the credentials."
+        );
+      }
     },
     onBeforeRedirect: persistEditUiState,
   });
@@ -144,9 +170,9 @@ const MCPServerEdit: React.FC<MCPServerEditProps> = ({
   }, [mcpServer.env]);
 
 
-  // If server has spec_path and no url, show it as "openapi" transport in the UI
+  // If server has spec_path, show it as "openapi" transport in the UI
   const effectiveTransport = React.useMemo(() => {
-    if (mcpServer.spec_path && !mcpServer.url && mcpServer.transport !== "stdio") {
+    if (mcpServer.spec_path && mcpServer.transport !== "stdio") {
       return TRANSPORT.OPENAPI;
     }
     return mcpServer.transport;
@@ -234,8 +260,13 @@ const MCPServerEdit: React.FC<MCPServerEditProps> = ({
     }
   }, [mcpServer]);
 
-  // Fetch tools when component mounts
+  // Fetch tools when component mounts or when OAuth token is received
+  // But only if the server has been properly saved (has a permanent server_id)
   useEffect(() => {
+    // Don't fetch if server hasn't been saved yet (no permanent server_id)
+    if (!mcpServer.server_id || mcpServer.server_id.trim() === "") {
+      return;
+    }
     fetchTools();
   }, [mcpServer, accessToken, oauthAccessToken]);
 
@@ -859,12 +890,18 @@ const MCPServerEdit: React.FC<MCPServerEditProps> = ({
                 oauthAccessToken={oauthAccessToken}
                 formValues={{
                   server_id: mcpServer.server_id,
-                  server_name: mcpServer.server_name,
-                  url: mcpServer.url,
-                  transport: mcpServer.transport,
-                  auth_type: mcpServer.auth_type,
+                  server_name: currentServerName ?? mcpServer.server_name,
+                  url: currentUrl ?? mcpServer.url,
+                  spec_path: currentSpecPath ?? mcpServer.spec_path,
+                  transport: transportType ?? mcpServer.transport,
+                  auth_type: currentAuthType ?? mcpServer.auth_type,
                   mcp_info: mcpServer.mcp_info,
-                  oauth_flow_type: mcpServer.token_url ? OAUTH_FLOW.M2M : OAUTH_FLOW.INTERACTIVE,
+                  oauth_flow_type: (currentTokenUrl ?? mcpServer.token_url) ? OAUTH_FLOW.M2M : OAUTH_FLOW.INTERACTIVE,
+                  static_headers: currentStaticHeaders ?? mcpServer.static_headers,
+                  credentials: currentCredentials,
+                  authorization_url: currentAuthorizationUrl ?? mcpServer.authorization_url,
+                  token_url: currentTokenUrl ?? mcpServer.token_url,
+                  registration_url: currentRegistrationUrl ?? mcpServer.registration_url,
                 }}
                 allowedTools={allowedTools}
                 existingAllowedTools={mcpServer.allowed_tools || null}

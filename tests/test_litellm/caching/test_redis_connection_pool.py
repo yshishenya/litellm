@@ -4,14 +4,12 @@ Regression tests for Redis connection pool leak fixes (RC1-RC5).
 Tests are pure unit tests — no Redis server required.
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import redis.asyncio as async_redis
 
 from litellm._redis import get_redis_async_client, get_redis_connection_pool
-from litellm.caching.llm_caching_handler import LLMClientCache
 
 
 def test_url_config_uses_passed_pool():
@@ -39,29 +37,25 @@ def test_url_config_falls_back_to_from_url_without_pool():
     assert client.connection_pool is not None
 
 
-def test_max_connections_url_config():
+def test_max_connections_url_config(monkeypatch):
     """max_connections should be respected when using URL-based config."""
-    with patch("litellm._redis._get_redis_client_logic") as mock_logic:
-        mock_logic.return_value = {
-            "url": "redis://localhost:6379/0",
-            "max_connections": 10,
-        }
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.delenv("REDIS_HOST", raising=False)
+    monkeypatch.setenv("REDIS_MAX_CONNECTIONS", "10")
 
-        pool = get_redis_connection_pool()
+    pool = get_redis_connection_pool()
 
     assert pool.max_connections == 10
 
 
-def test_max_connections_url_config_string_value():
+def test_max_connections_url_config_string_value(monkeypatch):
     """max_connections provided as a string (from env var) should be
     cast to int."""
-    with patch("litellm._redis._get_redis_client_logic") as mock_logic:
-        mock_logic.return_value = {
-            "url": "redis://localhost:6379/0",
-            "max_connections": "25",
-        }
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.delenv("REDIS_HOST", raising=False)
+    monkeypatch.setenv("REDIS_MAX_CONNECTIONS", "25")
 
-        pool = get_redis_connection_pool()
+    pool = get_redis_connection_pool()
 
     assert pool.max_connections == 25
 
@@ -135,37 +129,3 @@ async def test_disconnect_idempotent():
     await cache.disconnect()  # should not raise
 
 
-@pytest.mark.asyncio
-async def test_eviction_calls_aclose():
-    """When an async client is evicted from LLMClientCache, its aclose()
-    should be scheduled via create_task."""
-    cache = LLMClientCache(max_size_in_memory=2, default_ttl=600)
-
-    client = AsyncMock()
-    client.aclose = AsyncMock()
-
-    cache.set_cache(key="client-0", value=client)
-    cache.set_cache(key="filler", value="x")
-    # Third insert triggers eviction of client-0
-    cache.set_cache(key="trigger", value="y")
-
-    # Let the scheduled task run
-    await asyncio.sleep(0.05)
-
-    assert client.aclose.await_count > 0
-
-
-@pytest.mark.asyncio
-async def test_eviction_non_closeable_safe():
-    """Evicting plain values (strings, dicts, ints) should not crash."""
-    cache = LLMClientCache(max_size_in_memory=2, default_ttl=600)
-
-    cache.set_cache(key="str-val", value="hello")
-    cache.set_cache(key="dict-val", value={"foo": "bar"})
-    # This evicts "str-val" — should not raise
-    cache.set_cache(key="int-val", value=42)
-
-    await asyncio.sleep(0.05)
-
-    # If we got here without exception, the test passes
-    assert cache.get_cache(key="int-val") == 42

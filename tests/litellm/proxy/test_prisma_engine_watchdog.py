@@ -3,22 +3,22 @@ Tests for PrismaClient engine watchdog: death detection and automatic reconnect.
 
 Covers:
 - Engine PID discovery and liveness check
-- Process disappears from /proc → reconnect triggered via attempt_db_reconnect
-- Process becomes zombie in /proc → reconnect triggered via attempt_db_reconnect
+- Engine process gone (os.kill raises ProcessLookupError) → reconnect triggered
+- PermissionError from os.kill → treated as alive (process exists but not ours)
 - pidfd handler → schedules attempt_db_reconnect even when lock is held
-- SIGCHLD handler → reaps all zombies, triggers reconnect if engine reaped
+- waitpid thread → instant cross-platform detection, triggers reconnect
 - _run_reconnect_cycle branches: heavy path (engine dead) vs lightweight path (engine alive)
 - _engine_confirmed_dead flag ensures heavy reconnect even after _engine_pid reset
 - Successful heavy reconnect → watcher re-armed for new process
 - Missing DATABASE_URL → graceful RuntimeError in reconnect cycle
-- Shutdown → polling loop exits cleanly, SIGCHLD handler removed
+- Shutdown → polling loop exits cleanly
 """
 
 import asyncio
 import os
-import signal
+import threading
 import time
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -69,25 +69,23 @@ def test_is_engine_alive_returns_true_when_pid_unknown(engine_client):
 
 
 def test_is_engine_alive_returns_false_when_process_gone(engine_client):
-    """_is_engine_alive returns False when /proc/<pid>/stat is missing."""
+    """_is_engine_alive returns False when os.kill raises ProcessLookupError."""
     engine_client._engine_pid = 9999
-    with patch("builtins.open", side_effect=FileNotFoundError):
+    with patch("os.kill", side_effect=ProcessLookupError):
         assert engine_client._is_engine_alive() is False
 
 
-def test_is_engine_alive_returns_false_for_zombie(engine_client):
-    """_is_engine_alive returns False when process is in zombie state."""
+def test_is_engine_alive_returns_true_on_permission_error(engine_client):
+    """_is_engine_alive returns True when os.kill raises PermissionError (process exists but not ours)."""
     engine_client._engine_pid = 1234
-    zombie_stat = "1234 (prisma-query-engine) Z 1\n"
-    with patch("builtins.open", mock_open(read_data=zombie_stat)):
-        assert engine_client._is_engine_alive() is False
+    with patch("os.kill", side_effect=PermissionError):
+        assert engine_client._is_engine_alive() is True
 
 
 def test_is_engine_alive_returns_true_for_running_process(engine_client):
-    """_is_engine_alive returns True when process is in sleeping state."""
+    """_is_engine_alive returns True when os.kill succeeds (process running)."""
     engine_client._engine_pid = 1234
-    alive_stat = "1234 (prisma-query-engine) S 1\n"
-    with patch("builtins.open", mock_open(read_data=alive_stat)):
+    with patch("os.kill"):
         assert engine_client._is_engine_alive() is True
 
 
@@ -98,12 +96,12 @@ def test_is_engine_alive_returns_true_for_running_process(engine_client):
 
 @pytest.mark.asyncio
 async def test_poll_missing_process_triggers_reconnect(engine_client) -> None:
-    """Polling loop triggers attempt_db_reconnect when the engine process disappears."""
+    """Polling loop triggers attempt_db_reconnect when os.kill raises ProcessLookupError."""
     engine_client._engine_pid = 1234
     engine_client._watching_engine = True
     engine_client.attempt_db_reconnect = AsyncMock(return_value=True)
 
-    with patch("builtins.open", side_effect=FileNotFoundError):
+    with patch("os.kill", side_effect=ProcessLookupError):
         await engine_client._poll_engine_proc()
 
     engine_client.attempt_db_reconnect.assert_awaited_once_with(
@@ -113,20 +111,19 @@ async def test_poll_missing_process_triggers_reconnect(engine_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_poll_zombie_process_triggers_reconnect(engine_client) -> None:
-    """Polling loop triggers attempt_db_reconnect when the engine enters zombie state."""
+async def test_poll_permission_error_stops_polling(engine_client) -> None:
+    """Polling loop stops cleanly when os.kill raises PermissionError (process not ours)."""
     engine_client._engine_pid = 1234
     engine_client._watching_engine = True
     engine_client.attempt_db_reconnect = AsyncMock(return_value=True)
 
-    zombie_stat = "1234 (prisma-query-engine) Z 1\n"
-    with patch("builtins.open", mock_open(read_data=zombie_stat)):
+    with patch("os.kill", side_effect=PermissionError):
         await engine_client._poll_engine_proc()
 
-    engine_client.attempt_db_reconnect.assert_awaited_once_with(
-        reason="engine_process_death",
-        force=True,
-    )
+    # PermissionError means process exists but isn't ours — no reconnect, just stop polling
+    engine_client.attempt_db_reconnect.assert_not_awaited()
+    assert engine_client._watching_engine is False
+    assert engine_client._engine_pid == 0
 
 
 @pytest.mark.asyncio
@@ -135,13 +132,11 @@ async def test_stop_loop_halts_polling(engine_client) -> None:
     engine_client._engine_pid = 1234
     engine_client._watching_engine = True
 
-    alive_stat = "1234 (prisma-query-engine) S 1\n"
-
     async def stop_during_sleep(_duration: float) -> None:
         engine_client._stop_engine_watcher()
 
     with (
-        patch("builtins.open", mock_open(read_data=alive_stat)),
+        patch("os.kill"),
         patch("asyncio.sleep", side_effect=stop_during_sleep),
     ):
         await engine_client._poll_engine_proc()
@@ -333,7 +328,7 @@ async def test_start_watchdog_task_also_starts_engine_watcher(
 async def test_stop_watchdog_task_also_stops_engine_watcher(
     engine_client,
 ) -> None:
-    """stop_db_health_watchdog_task() also stops engine watcher and SIGCHLD handler."""
+    """stop_db_health_watchdog_task() also stops engine watcher."""
     engine_client._stop_engine_watcher = MagicMock()
 
     loop = asyncio.get_running_loop()
@@ -347,85 +342,177 @@ async def test_stop_watchdog_task_also_stops_engine_watcher(
 
 
 # ---------------------------------------------------------------------------
-# SIGCHLD handler
+# waitpid thread (cross-platform)
 # ---------------------------------------------------------------------------
 
 
-def test_sigchld_handler_reaps_engine_and_triggers_reconnect(engine_client):
-    """SIGCHLD handler detects engine death, reaps zombies, triggers reconnect."""
+def test_try_waitpid_watch_returns_false_when_not_child(engine_client):
+    """_try_waitpid_watch returns False when PID is not our child process."""
+    engine_client._engine_pid = 9999
+    with patch("os.waitpid", side_effect=ChildProcessError):
+        assert engine_client._try_waitpid_watch(9999) is False
+    assert engine_client._engine_wait_thread is None
+
+
+def test_try_waitpid_watch_starts_thread_for_child(engine_client):
+    """_try_waitpid_watch starts a daemon thread when PID is our child."""
     engine_client._engine_pid = 1234
+    mock_thread = MagicMock()
+    mock_loop = MagicMock()
+    with (
+        patch("os.waitpid", return_value=(0, 0)),
+        patch("asyncio.get_running_loop", return_value=mock_loop),
+        patch("threading.Thread", return_value=mock_thread) as mock_thread_cls,
+    ):
+        result = engine_client._try_waitpid_watch(1234)
+    assert result is True
+    mock_thread.start.assert_called_once()
+    assert engine_client._engine_wait_thread is mock_thread
+
+
+@pytest.mark.asyncio
+async def test_try_waitpid_watch_handles_already_dead_engine(engine_client) -> None:
+    """_try_waitpid_watch detects engine already dead at watch start."""
+    engine_client._engine_pid = 1234
+    engine_client.attempt_db_reconnect = AsyncMock(return_value=True)
+
     created_coros = []
 
     def capture_task(coro):
         created_coros.append(coro)
         return MagicMock()
 
-    # Simulate waitpid returning the engine PID then raising ChildProcessError
+    waitpid_calls = iter([(1234, 0)])
+
+    def mock_waitpid(pid, flags):
+        if pid == -1:
+            raise ChildProcessError
+        return next(waitpid_calls)
+
     with (
-        patch("os.waitpid", side_effect=[(1234, 0), ChildProcessError]),
+        patch("os.waitpid", side_effect=mock_waitpid),
         patch("asyncio.create_task", side_effect=capture_task),
     ):
-        engine_client._on_sigchld()
+        result = engine_client._try_waitpid_watch(1234)
 
+    assert result is True
     assert engine_client._engine_confirmed_dead is True
-    assert engine_client._engine_pid == 0  # cleanup ran
     assert len(created_coros) == 1
-    # Clean up the coroutine
     created_coros[0].close()
 
 
-def test_sigchld_handler_ignores_non_engine_zombies(engine_client):
-    """SIGCHLD handler reaps non-engine zombies without triggering reconnect."""
+@pytest.mark.asyncio
+async def test_on_engine_death_from_thread_triggers_reconnect(engine_client) -> None:
+    """waitpid thread callback schedules attempt_db_reconnect."""
     engine_client._engine_pid = 1234
+    engine_client.attempt_db_reconnect = AsyncMock(return_value=True)
 
-    # Simulate reaping PID 5555 (not the engine)
-    with patch("os.waitpid", side_effect=[(5555, 0), ChildProcessError]):
-        engine_client._on_sigchld()
+    created_coros = []
 
-    assert engine_client._engine_confirmed_dead is False
-    assert engine_client._engine_pid == 1234  # unchanged
+    def capture_task(coro):
+        created_coros.append(coro)
+        return MagicMock()
+
+    with patch("asyncio.create_task", side_effect=capture_task):
+        engine_client._on_engine_death_from_thread(1234)
+
+    assert len(created_coros) == 1
+    await created_coros[0]
+
+    engine_client.attempt_db_reconnect.assert_awaited_once_with(
+        reason="engine_process_death",
+        force=True,
+    )
 
 
-def test_sigchld_handler_no_double_trigger(engine_client):
-    """SIGCHLD handler does not trigger reconnect if already confirmed dead."""
+def test_on_engine_death_from_thread_no_double_trigger(engine_client):
+    """waitpid thread callback does not trigger reconnect if already confirmed dead."""
     engine_client._engine_pid = 1234
-    engine_client._engine_confirmed_dead = True  # Already handled
+    engine_client._engine_confirmed_dead = True
 
-    with (
-        patch("os.waitpid", side_effect=[(1234, 0), ChildProcessError]),
-        patch("asyncio.create_task") as mock_create_task,
-    ):
-        engine_client._on_sigchld()
+    with patch("asyncio.create_task") as mock_create_task:
+        engine_client._on_engine_death_from_thread(1234)
 
     mock_create_task.assert_not_called()
 
 
-def test_install_sigchld_handler_success(engine_client):
-    """SIGCHLD handler installs on a running event loop."""
-    mock_loop = MagicMock()
-    with patch("asyncio.get_running_loop", return_value=mock_loop):
-        assert engine_client._install_sigchld_handler() is True
+def test_on_engine_death_from_thread_ignores_stale_pid(engine_client):
+    """waitpid thread callback ignores death notification for a stale PID."""
+    engine_client._engine_pid = 5678
 
-    assert engine_client._sigchld_installed is True
-    mock_loop.add_signal_handler.assert_called_once_with(
-        signal.SIGCHLD, engine_client._on_sigchld
+    with patch("asyncio.create_task") as mock_create_task:
+        engine_client._on_engine_death_from_thread(1234)
+
+    mock_create_task.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Reconnect escalation: lightweight -> heavy after consecutive failures
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_escalation_after_consecutive_lightweight_failures(engine_client):
+    """After N consecutive lightweight reconnect failures, _engine_confirmed_dead
+    is set to True so _run_reconnect_cycle takes the heavy reconnect path."""
+    engine_client._reconnect_escalation_threshold = 3
+    engine_client._consecutive_reconnect_failures = 0
+    engine_client._db_reconnect_cooldown_seconds = 0  # disable cooldown for test
+
+    # Make lightweight reconnect fail every time
+    engine_client.db.disconnect = AsyncMock(return_value=None)
+    engine_client.db.connect = AsyncMock(side_effect=Exception("connect failed"))
+
+    # Run 3 failed reconnect attempts
+    for i in range(3):
+        result = await engine_client._attempt_reconnect_inside_lock(
+            force=True, reason="test", timeout_seconds=5.0
+        )
+        assert result is False
+
+    assert engine_client._consecutive_reconnect_failures == 3
+
+    # Next attempt should escalate: _engine_confirmed_dead set to True before _run_reconnect_cycle
+    engine_client.db.recreate_prisma_client = AsyncMock(return_value=None)
+    engine_client._start_engine_watcher = AsyncMock(return_value=None)
+
+    with patch.dict(os.environ, {"DATABASE_URL": "postgresql://test"}):
+        result = await engine_client._attempt_reconnect_inside_lock(
+            force=True, reason="test_escalation", timeout_seconds=5.0
+        )
+
+    # Heavy reconnect should have been attempted (recreate_prisma_client called)
+    engine_client.db.recreate_prisma_client.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_successful_reconnect_resets_failure_counter(engine_client):
+    """A successful reconnect resets _consecutive_reconnect_failures to 0."""
+    engine_client._consecutive_reconnect_failures = 2
+    engine_client._db_reconnect_cooldown_seconds = 0
+
+    # Make reconnect succeed
+    engine_client.db.disconnect = AsyncMock(return_value=None)
+    engine_client.db.connect = AsyncMock(return_value=None)
+    engine_client.db.query_raw = AsyncMock(return_value=[{"result": 1}])
+
+    result = await engine_client._attempt_reconnect_inside_lock(
+        force=True, reason="test", timeout_seconds=5.0
     )
 
-
-def test_install_sigchld_handler_no_loop(engine_client):
-    """SIGCHLD handler returns False when no event loop is running."""
-    with patch("asyncio.get_running_loop", side_effect=RuntimeError):
-        assert engine_client._install_sigchld_handler() is False
-
-    assert engine_client._sigchld_installed is False
+    assert result is True
+    assert engine_client._consecutive_reconnect_failures == 0
 
 
-def test_remove_sigchld_handler(engine_client):
-    """SIGCHLD handler is properly removed."""
-    engine_client._sigchld_installed = True
-    mock_loop = MagicMock()
-    with patch("asyncio.get_running_loop", return_value=mock_loop):
-        engine_client._remove_sigchld_handler()
+def test_escalation_threshold_env_var(mock_proxy_logging):
+    """PRISMA_RECONNECT_ESCALATION_THRESHOLD env var is respected."""
+    with patch.dict(os.environ, {"PRISMA_RECONNECT_ESCALATION_THRESHOLD": "5"}):
+        client = PrismaClient(database_url="mock://test", proxy_logging_obj=mock_proxy_logging)
+    assert client._reconnect_escalation_threshold == 5
 
-    assert engine_client._sigchld_installed is False
-    mock_loop.remove_signal_handler.assert_called_once_with(signal.SIGCHLD)
+
+def test_escalation_threshold_min_guard(mock_proxy_logging):
+    """Escalation threshold cannot be set below 1."""
+    with patch.dict(os.environ, {"PRISMA_RECONNECT_ESCALATION_THRESHOLD": "0"}):
+        client = PrismaClient(database_url="mock://test", proxy_logging_obj=mock_proxy_logging)
+    assert client._reconnect_escalation_threshold == 1

@@ -466,6 +466,33 @@ export const cancelModelCostMapReload = async (accessToken: string) => {
   }
 };
 
+export const getModelCostMapSource = async (accessToken: string) => {
+  try {
+    const url = proxyBaseUrl
+      ? `${proxyBaseUrl}/model/cost_map/source`
+      : `/model/cost_map/source`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const jsonData = await response.json();
+    console.log("Model cost map source info:", jsonData);
+    return jsonData;
+  } catch (error) {
+    console.error("Failed to get model cost map source info:", error);
+    throw error;
+  }
+};
+
 export const getModelCostMapReloadStatus = async (accessToken: string) => {
   try {
     const url = proxyBaseUrl
@@ -901,6 +928,35 @@ export const keyCreateCall = async (
     console.error("Failed to create key:", error);
     throw error;
   }
+};
+
+export const keyCreateForAgentCall = async (
+  accessToken: string,
+  agentId: string,
+  keyAlias: string,
+  models: string[],
+) => {
+  const url = proxyBaseUrl ? `${proxyBaseUrl}/key/generate` : `/key/generate`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      agent_id: agentId,
+      key_alias: keyAlias,
+      models: models.length > 0 ? models : [],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    handleError(errorData);
+    throw new Error("Failed to create key for agent");
+  }
+
+  return response.json();
 };
 
 export const userCreateCall = async (
@@ -3273,13 +3329,33 @@ export const keyListCall = async (
   }
 };
 
-export const keyAliasesCall = async (accessToken: string): Promise<{ aliases: string[] }> => {
+export interface PaginatedKeyAliasResponse {
+  aliases: string[];
+  total_count: number;
+  current_page: number;
+  total_pages: number;
+  size: number;
+}
+
+export const keyAliasesCall = async (
+  accessToken: string,
+  page: number = 1,
+  size: number = 50,
+  search?: string,
+): Promise<PaginatedKeyAliasResponse> => {
   /**
-   * Get all key aliases from proxy
+   * Get key aliases from proxy with pagination and optional search
    */
   try {
+    const params = new URLSearchParams(
+      Object.entries({
+        page: String(page),
+        size: String(size),
+        ...(search ? { search } : {}),
+      }),
+    );
     let url = proxyBaseUrl ? `${proxyBaseUrl}/key/aliases` : `/key/aliases`;
-    console.log("in keyAliasesCall");
+    url = `${url}?${params}`;
 
     const response = await fetch(url, {
       method: "GET",
@@ -3298,7 +3374,7 @@ export const keyAliasesCall = async (accessToken: string): Promise<{ aliases: st
 
     const data = await response.json();
     console.log("/key/aliases API Response:", data);
-    return data; // { aliases: string[] }
+    return data;
   } catch (error) {
     console.error("Failed to fetch key aliases:", error);
     throw error;
@@ -5027,14 +5103,14 @@ export const healthCheckCall = async (accessToken: string) => {
   }
 };
 
-export const individualModelHealthCheckCall = async (accessToken: string, modelName: string) => {
+export const individualModelHealthCheckCall = async (accessToken: string, modelId: string) => {
   /**
-   * Run health check for a specific model using model name
+   * Run health check for a specific model using model ID (so each deployment is checked separately).
    */
   try {
     let url = proxyBaseUrl
-      ? `${proxyBaseUrl}/health?model=${encodeURIComponent(modelName)}`
-      : `/health?model=${encodeURIComponent(modelName)}`;
+      ? `${proxyBaseUrl}/health?model_id=${encodeURIComponent(modelId)}`
+      : `/health?model_id=${encodeURIComponent(modelId)}`;
 
     const response = await fetch(url, {
       method: "GET",
@@ -5054,7 +5130,7 @@ export const individualModelHealthCheckCall = async (accessToken: string, modelN
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error(`Failed to call /health for model ${modelName}:`, error);
+    console.error(`Failed to call /health for model id ${modelId}:`, error);
     throw error;
   }
 };
@@ -5384,8 +5460,8 @@ export const testMCPSemanticFilter = async (accessToken: string, model: string, 
 
 export const getGuardrailsList = async (accessToken: string) => {
   try {
-    const url = proxyBaseUrl ? `${proxyBaseUrl}/v2/guardrails/list` : `/v2/guardrails/list`;
-    const response = await fetch(url, {
+    const v2Url = proxyBaseUrl ? `${proxyBaseUrl}/v2/guardrails/list` : `/v2/guardrails/list`;
+    const response = await fetch(v2Url, {
       method: "GET",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
@@ -5394,16 +5470,281 @@ export const getGuardrailsList = async (accessToken: string) => {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      const errorMessage = deriveErrorMessage(errorData);
-      handleError(errorMessage);
-      throw new Error(errorMessage);
+      throw new Error(`v2 guardrails/list returned ${response.status}`);
     }
 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error("Failed to get guardrails list:", error);
+    console.log("v2/guardrails/list failed, falling back to v1:", error);
+    try {
+      const v1Url = proxyBaseUrl ? `${proxyBaseUrl}/guardrails/list` : `/guardrails/list`;
+      const fallbackResponse = await fetch(v1Url, {
+        method: "GET",
+        headers: {
+          [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!fallbackResponse.ok) {
+        const errorData = await fallbackResponse.json();
+        const errorMessage = deriveErrorMessage(errorData);
+        handleError(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      return await fallbackResponse.json();
+    } catch (fallbackError) {
+      console.error("Failed to get guardrails list:", fallbackError);
+      throw fallbackError;
+    }
+  }
+};
+
+// Team guardrail submissions (admin)
+export interface GuardrailSubmissionItem {
+  guardrail_id: string;
+  guardrail_name: string;
+  status: string; // "pending_review" | "active" | "rejected"
+  team_id?: string | null;
+  team_guardrail?: boolean; // true when submitted via team (team_id set)
+  litellm_params?: Record<string, unknown> | null;
+  guardrail_info?: Record<string, unknown> | null;
+  submitted_by_user_id?: string | null;
+  submitted_by_email?: string | null;
+  submitted_at?: string | null;
+  reviewed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface GuardrailSubmissionSummary {
+  total: number;
+  pending_review: number;
+  active: number;
+  rejected: number;
+}
+
+export interface ListGuardrailSubmissionsResponse {
+  submissions: GuardrailSubmissionItem[];
+  summary: GuardrailSubmissionSummary;
+}
+
+export const listGuardrailSubmissions = async (
+  accessToken: string,
+  params?: { status?: string; team_id?: string; team_guardrail?: boolean; search?: string }
+): Promise<ListGuardrailSubmissionsResponse> => {
+  const url = proxyBaseUrl ? `${proxyBaseUrl}/guardrails/submissions` : `/guardrails/submissions`;
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.team_id) searchParams.set("team_id", params.team_id);
+  if (params?.team_guardrail !== undefined) searchParams.set("team_guardrail", String(params.team_guardrail));
+  if (params?.search) searchParams.set("search", params.search);
+  const fullUrl = searchParams.toString() ? `${url}?${searchParams.toString()}` : url;
+  const response = await fetch(fullUrl, {
+    method: "GET",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = deriveErrorMessage(errorData);
+    handleError(errorMessage);
+    throw new Error(errorMessage);
+  }
+  return response.json();
+};
+
+export const getGuardrailSubmission = async (
+  accessToken: string,
+  guardrailId: string
+): Promise<GuardrailSubmissionItem> => {
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/guardrails/submissions/${encodeURIComponent(guardrailId)}`
+    : `/guardrails/submissions/${encodeURIComponent(guardrailId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = deriveErrorMessage(errorData);
+    handleError(errorMessage);
+    throw new Error(errorMessage);
+  }
+  return response.json();
+};
+
+export const approveGuardrailSubmission = async (
+  accessToken: string,
+  guardrailId: string
+): Promise<{ guardrail_id: string; status: string; message: string }> => {
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/guardrails/submissions/${encodeURIComponent(guardrailId)}/approve`
+    : `/guardrails/submissions/${encodeURIComponent(guardrailId)}/approve`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = deriveErrorMessage(errorData);
+    handleError(errorMessage);
+    throw new Error(errorMessage);
+  }
+  return response.json();
+};
+
+export const rejectGuardrailSubmission = async (
+  accessToken: string,
+  guardrailId: string
+): Promise<{ guardrail_id: string; status: string; message: string }> => {
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/guardrails/submissions/${encodeURIComponent(guardrailId)}/reject`
+    : `/guardrails/submissions/${encodeURIComponent(guardrailId)}/reject`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMessage = deriveErrorMessage(errorData);
+    handleError(errorMessage);
+    throw new Error(errorMessage);
+  }
+  return response.json();
+};
+
+// Guardrails / Policies usage (dashboard)
+export const getGuardrailsUsageOverview = async (
+  accessToken: string,
+  startDate?: string,
+  endDate?: string
+) => {
+  try {
+    let url = proxyBaseUrl ? `${proxyBaseUrl}/guardrails/usage/overview` : `/guardrails/usage/overview`;
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (params.toString()) url += `?${params.toString()}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(deriveErrorMessage(errorData));
+    }
+    return response.json();
+  } catch (error) {
+    console.error("Failed to get guardrails usage overview:", error);
+    throw error;
+  }
+};
+
+export const getGuardrailsUsageDetail = async (
+  accessToken: string,
+  guardrailId: string,
+  startDate?: string,
+  endDate?: string
+) => {
+  try {
+    let url = proxyBaseUrl ? `${proxyBaseUrl}/guardrails/usage/detail/${encodeURIComponent(guardrailId)}` : `/guardrails/usage/detail/${encodeURIComponent(guardrailId)}`;
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (params.toString()) url += `?${params.toString()}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(deriveErrorMessage(errorData));
+    }
+    return response.json();
+  } catch (error) {
+    console.error("Failed to get guardrails usage detail:", error);
+    throw error;
+  }
+};
+
+export const getGuardrailsUsageLogs = async (
+  accessToken: string,
+  options: { guardrailId?: string; policyId?: string; page?: number; pageSize?: number; action?: string; startDate?: string; endDate?: string }
+) => {
+  try {
+    let url = proxyBaseUrl ? `${proxyBaseUrl}/guardrails/usage/logs` : `/guardrails/usage/logs`;
+    const params = new URLSearchParams();
+    if (options.guardrailId) params.append("guardrail_id", options.guardrailId);
+    if (options.policyId) params.append("policy_id", options.policyId);
+    if (options.page != null) params.append("page", String(options.page));
+    if (options.pageSize != null) params.append("page_size", String(options.pageSize));
+    if (options.action) params.append("action", options.action);
+    if (options.startDate) params.append("start_date", options.startDate);
+    if (options.endDate) params.append("end_date", options.endDate);
+    if (params.toString()) url += `?${params.toString()}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(deriveErrorMessage(errorData));
+    }
+    return response.json();
+  } catch (error) {
+    console.error("Failed to get guardrails usage logs:", error);
+    throw error;
+  }
+};
+
+export const getPoliciesUsageOverview = async (
+  accessToken: string,
+  startDate?: string,
+  endDate?: string
+) => {
+  try {
+    let url = proxyBaseUrl ? `${proxyBaseUrl}/policies/usage/overview` : `/policies/usage/overview`;
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (params.toString()) url += `?${params.toString()}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(deriveErrorMessage(errorData));
+    }
+    return response.json();
+  } catch (error) {
+    console.error("Failed to get policies usage overview:", error);
     throw error;
   }
 };
@@ -5453,6 +5794,8 @@ export interface TestPoliciesAndGuardrailsRequest {
   inputs_list?: GuardrailInputs[] | null;
   request_data?: Record<string, unknown>;
   input_type?: "request" | "response";
+  /** When set, backend runs chat completion with this model/agent per input and includes agent_response in each result. */
+  agent_id?: string | null;
 }
 
 export interface GuardrailErrorEntry {
@@ -5460,16 +5803,24 @@ export interface GuardrailErrorEntry {
   message: string;
 }
 
+export interface TestPoliciesAndGuardrailsResultItem {
+  inputs: Record<string, unknown>;
+  guardrail_errors: GuardrailErrorEntry[];
+  /** Present when request included agent_id; serialized chat completion response. */
+  agent_response?: Record<string, unknown>;
+}
+
 export interface TestPoliciesAndGuardrailsResponse {
   inputs?: Record<string, unknown>;
   guardrail_errors?: GuardrailErrorEntry[];
   /** Present when inputs_list was used; one result per input. */
-  results?: Array<{ inputs: Record<string, unknown>; guardrail_errors: GuardrailErrorEntry[] }>;
+  results?: TestPoliciesAndGuardrailsResultItem[];
 }
 
 export const testPoliciesAndGuardrails = async (
   accessToken: string,
-  body: TestPoliciesAndGuardrailsRequest
+  body: TestPoliciesAndGuardrailsRequest,
+  signal?: AbortSignal
 ): Promise<TestPoliciesAndGuardrailsResponse> => {
   try {
     const url = proxyBaseUrl
@@ -5477,6 +5828,7 @@ export const testPoliciesAndGuardrails = async (
       : `/utils/test_policies_and_guardrails`;
     const response = await fetch(url, {
       method: "POST",
+      signal,
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
@@ -5488,6 +5840,7 @@ export const testPoliciesAndGuardrails = async (
         inputs_list: body.inputs_list ?? null,
         request_data: body.request_data ?? {},
         input_type: body.input_type ?? "request",
+        agent_id: body.agent_id ?? null,
       }),
     });
 
@@ -5718,6 +6071,7 @@ export const enrichPolicyTemplateStream = async (
   const decoder = new TextDecoder();
   let buffer = "";
 
+  // eslint-disable-next-line no-constant-condition -- stream read loop
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -5736,6 +6090,83 @@ export const enrichPolicyTemplateStream = async (
           onStatus?.(event.message);
         } else if (event.type === "done") {
           onDone(event);
+        } else if (event.type === "error") {
+          onError?.(event.message);
+        }
+      } catch {
+        // skip malformed events
+      }
+    }
+  }
+};
+
+export interface UsageAiToolCallEvent {
+  tool_name: string;
+  tool_label: string;
+  arguments: Record<string, string>;
+  status: "running" | "complete" | "error";
+  error?: string;
+}
+
+export const usageAiChatStream = async (
+  accessToken: string,
+  messages: { role: string; content: string }[],
+  model: string,
+  onChunk: (content: string) => void,
+  onDone: () => void,
+  onError?: (error: string) => void,
+  onStatus?: (message: string) => void,
+  onToolCall?: (event: UsageAiToolCallEvent) => void,
+  signal?: AbortSignal,
+) => {
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/usage/ai/chat`
+    : `/usage/ai/chat`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ messages, model }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    const errorMessage = deriveErrorMessage(errorData);
+    handleError(errorMessage);
+    throw new Error(errorMessage);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  // eslint-disable-next-line no-constant-condition -- stream read loop
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const event = JSON.parse(line.slice(6));
+        if (event.type === "chunk") {
+          onChunk(event.content);
+        } else if (event.type === "status") {
+          onStatus?.(event.message);
+        } else if (event.type === "tool_call") {
+          onToolCall?.(event as UsageAiToolCallEvent);
+        } else if (event.type === "done") {
+          onDone();
         } else if (event.type === "error") {
           onError?.(event.message);
         }
@@ -5796,6 +6227,102 @@ export const updatePolicyCall = async (accessToken: string, policyId: string, po
     return data;
   } catch (error) {
     console.error("Failed to update policy:", error);
+    throw error;
+  }
+};
+
+export const listPolicyVersions = async (
+  accessToken: string,
+  policyName: string
+): Promise<{ policy_name: string; versions: any[]; total_count: number }> => {
+  try {
+    const encodedName = encodeURIComponent(policyName);
+    const url = proxyBaseUrl
+      ? `${proxyBaseUrl}/policies/name/${encodedName}/versions`
+      : `/policies/name/${encodedName}/versions`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      const errorMessage = deriveErrorMessage(errorData);
+      handleError(errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to list policy versions:", error);
+    throw error;
+  }
+};
+
+export const createPolicyVersion = async (
+  accessToken: string,
+  policyName: string,
+  sourcePolicyId?: string | null
+): Promise<any> => {
+  try {
+    const encodedName = encodeURIComponent(policyName);
+    const url = proxyBaseUrl
+      ? `${proxyBaseUrl}/policies/name/${encodedName}/versions`
+      : `/policies/name/${encodedName}/versions`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ source_policy_id: sourcePolicyId ?? undefined }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      const errorMessage = deriveErrorMessage(errorData);
+      handleError(errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to create policy version:", error);
+    throw error;
+  }
+};
+
+export const updatePolicyVersionStatus = async (
+  accessToken: string,
+  policyId: string,
+  versionStatus: "published" | "production"
+): Promise<any> => {
+  try {
+    const url = proxyBaseUrl
+      ? `${proxyBaseUrl}/policies/${policyId}/status`
+      : `/policies/${policyId}/status`;
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ version_status: versionStatus }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      const errorMessage = deriveErrorMessage(errorData);
+      handleError(errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to update policy version status:", error);
     throw error;
   }
 };
@@ -6890,7 +7417,11 @@ export const testSearchToolConnection = async (accessToken: string, litellmParam
   }
 };
 
-export const listMCPTools = async (accessToken: string, serverId: string) => {
+export const listMCPTools = async (
+  accessToken: string, 
+  serverId: string,
+  customHeaders?: Record<string, string>
+) => {
   try {
     // Construct base URL
     let url = proxyBaseUrl
@@ -6902,6 +7433,7 @@ export const listMCPTools = async (accessToken: string, serverId: string) => {
     const headers: Record<string, string> = {
       [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
+      ...customHeaders, // Merge custom headers for passthrough auth
     };
 
     const response = await fetch(url, {
@@ -6937,6 +7469,7 @@ export const listMCPTools = async (accessToken: string, serverId: string) => {
 
 export interface CallMCPToolOptions {
   guardrails?: string[];
+  customHeaders?: Record<string, string>;
 }
 
 export const callMCPTool = async (
@@ -6955,6 +7488,7 @@ export const callMCPTool = async (
     const headers: Record<string, string> = {
       [globalLitellmHeaderName]: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
+      ...(options?.customHeaders || {}), // Merge custom headers for passthrough auth
     };
 
     const body: Record<string, any> = {
@@ -7973,6 +8507,7 @@ export const updateGuardrailCall = async (
     guardrail_name?: string;
     default_on?: boolean;
     guardrail_info?: Record<string, any>;
+    litellm_params?: Record<string, any>;
   },
 ) => {
   try {
@@ -8251,29 +8786,45 @@ export const updateSSOSettings = async (accessToken: string, settings: Record<st
   }
 };
 
-export const uiAuditLogsCall = async (
-  accessToken: string,
-  start_date?: string,
-  end_date?: string,
-  page?: number,
-  page_size?: number,
-) => {
+export interface UiAuditLogsParams {
+  action?: string;
+  table_name?: string;
+  object_id?: string;
+  changed_by?: string;
+  changed_by_api_key?: string;
+  object_team_id?: string;
+  object_key_hash?: string;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
+}
+
+export interface UiAuditLogsCallOptions {
+  accessToken: string;
+  page?: number;
+  page_size?: number;
+  params?: UiAuditLogsParams;
+}
+
+export const uiAuditLogsCall = async ({
+  accessToken,
+  page = 1,
+  page_size = 50,
+  params = {},
+}: UiAuditLogsCallOptions) => {
   try {
-    // Construct base URL
     let url = proxyBaseUrl ? `${proxyBaseUrl}/audit` : `/audit`;
 
-    // Add query parameters if they exist
     const queryParams = new URLSearchParams();
-    // if (start_date) queryParams.append('start_date', start_date);
-    // if (end_date) queryParams.append('end_date', end_date);
-    if (page) queryParams.append("page", page.toString());
-    if (page_size) queryParams.append("page_size", page_size.toString());
+    queryParams.append("page", page.toString());
+    queryParams.append("page_size", page_size.toString());
 
-    // Append query parameters to URL if any exist
-    const queryString = queryParams.toString();
-    if (queryString) {
-      url += `?${queryString}`;
+    for (const [key, value] of Object.entries(params)) {
+      if (value != null && value !== "") {
+        queryParams.append(key, String(value));
+      }
     }
+
+    url += `?${queryParams.toString()}`;
 
     const response = await fetch(url, {
       method: "GET",
@@ -8290,8 +8841,7 @@ export const uiAuditLogsCall = async (
       throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error) {
     console.error("Failed to fetch audit logs:", error);
     throw error;
@@ -9583,6 +10133,212 @@ export const checkGdprCompliance = async (
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(errorData);
+  }
+  return response.json();
+};
+
+export interface ToolRow {
+  tool_id: string;
+  tool_name: string;
+  origin?: string;
+  input_policy: string;
+  output_policy: string;
+  call_count?: number;
+  assignments?: Record<string, any>;
+  key_hash?: string;
+  team_id?: string;
+  key_alias?: string;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  updated_by?: string;
+  user_agent?: string;
+  last_used_at?: string;
+}
+
+export interface ToolPolicyOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+export interface ToolPolicyOptionsResponse {
+  input_policies: ToolPolicyOption[];
+  output_policies: ToolPolicyOption[];
+}
+
+export const fetchToolPolicyOptions = async (
+  accessToken: string
+): Promise<ToolPolicyOptionsResponse> => {
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/v1/tool/policy/options`
+    : `/v1/tool/policy/options`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(errorData);
+  }
+  return response.json();
+};
+
+export const fetchToolsList = async (accessToken: string): Promise<ToolRow[]> => {
+  const url = proxyBaseUrl ? `${proxyBaseUrl}/v1/tool/list` : `/v1/tool/list`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(errorData);
+  }
+  const data = await response.json();
+  return data.tools ?? [];
+};
+
+export interface ToolPolicyOverrideRow {
+  override_id: string;
+  tool_name: string;
+  team_id?: string | null;
+  key_hash?: string | null;
+  input_policy: string;
+  key_alias?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ToolDetailResponse {
+  tool: ToolRow;
+  overrides: ToolPolicyOverrideRow[];
+}
+
+export interface ToolUsageLogEntry {
+  id: string;
+  timestamp: string;
+  model?: string | null;
+  spend?: number | null;
+  total_tokens?: number | null;
+  input_snippet?: string | null;
+}
+
+export interface ToolUsageLogsResponse {
+  logs: ToolUsageLogEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export const getToolUsageLogs = async (
+  accessToken: string,
+  toolName: string,
+  options: { page?: number; pageSize?: number; startDate?: string; endDate?: string }
+): Promise<ToolUsageLogsResponse> => {
+  const encoded = encodeURIComponent(toolName);
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/v1/tool/${encoded}/logs`
+    : `/v1/tool/${encoded}/logs`;
+  const params = new URLSearchParams();
+  if (options.page != null) params.append("page", String(options.page));
+  if (options.pageSize != null) params.append("page_size", String(options.pageSize));
+  if (options.startDate) params.append("start_date", options.startDate);
+  if (options.endDate) params.append("end_date", options.endDate);
+  const fullUrl = params.toString() ? `${url}?${params.toString()}` : url;
+  const response = await fetch(fullUrl, {
+    method: "GET",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(deriveErrorMessage(errorData));
+  }
+  return response.json();
+};
+
+export const fetchToolDetail = async (
+  accessToken: string,
+  toolName: string
+): Promise<ToolDetailResponse> => {
+  const encoded = encodeURIComponent(toolName);
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/v1/tool/${encoded}/detail`
+    : `/v1/tool/${encoded}/detail`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(errorData);
+  }
+  return response.json();
+};
+
+export const updateToolPolicy = async (
+  accessToken: string,
+  toolName: string,
+  policies: { input_policy?: string; output_policy?: string },
+  options?: { team_id?: string | null; key_hash?: string | null; key_alias?: string | null }
+): Promise<ToolRow> => {
+  const url = proxyBaseUrl ? `${proxyBaseUrl}/v1/tool/policy` : `/v1/tool/policy`;
+  const body: Record<string, string | undefined | null> = {
+    tool_name: toolName,
+  };
+  if (policies.input_policy != null) body.input_policy = policies.input_policy;
+  if (policies.output_policy != null) body.output_policy = policies.output_policy;
+  if (options?.team_id != null) body.team_id = options.team_id || undefined;
+  if (options?.key_hash != null) body.key_hash = options.key_hash || undefined;
+  if (options?.key_alias != null) body.key_alias = options.key_alias || undefined;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(errorData);
+  }
+  return response.json();
+};
+
+export const deleteToolPolicyOverride = async (
+  accessToken: string,
+  toolName: string,
+  params: { team_id?: string | null; key_hash?: string | null }
+): Promise<{ deleted: boolean; tool_name: string }> => {
+  const encoded = encodeURIComponent(toolName);
+  const q = new URLSearchParams();
+  if (params.team_id != null && params.team_id !== "") q.set("team_id", params.team_id);
+  if (params.key_hash != null && params.key_hash !== "") q.set("key_hash", params.key_hash);
+  const query = q.toString();
+  const url = proxyBaseUrl
+    ? `${proxyBaseUrl}/v1/tool/${encoded}/overrides${query ? `?${query}` : ""}`
+    : `/v1/tool/${encoded}/overrides${query ? `?${query}` : ""}`;
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      [globalLitellmHeaderName]: `Bearer ${accessToken}`,
+    },
   });
   if (!response.ok) {
     const errorData = await response.text();
