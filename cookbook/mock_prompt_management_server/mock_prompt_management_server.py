@@ -163,14 +163,13 @@ app = FastAPI(
 
 
 def verify_api_key(authorization: Optional[str] = Header(None)) -> bool:
-    """
-    Verify the API key from the Authorization header.
-
+    """Verify the API key from the Authorization header.
+    
     Args:
         authorization: Authorization header (Bearer token)
-
+    
     Returns:
-        True if valid, raises HTTPException if invalid
+        True if valid, raises HTTPException if invalid.
     """
     if authorization is None:
         # Allow requests without authentication for testing
@@ -204,25 +203,23 @@ async def get_prompt(
     version: Optional[str] = Query(None, description="Optional version filter"),
     authorization: Optional[str] = Header(None),
 ) -> PromptResponse:
-    """
-    Get a prompt by ID with optional filtering.
-
-    This endpoint implements the LiteLLM Generic Prompt Management API specification.
-
-    Args:
-        prompt_id: The ID of the prompt to fetch
-        project_name: Optional project name for filtering
-        slug: Optional slug for filtering
-        version: Optional version for filtering
-        authorization: Optional Bearer token for authentication
-
-    Returns:
-        PromptResponse with the prompt template and configuration
-
-    Raises:
-        HTTPException: 401 if authentication fails, 404 if prompt not found
-    """
     # Verify authentication
+    """Retrieve a prompt by its ID with optional filtering.
+    
+    This function implements the LiteLLM Generic Prompt Management API
+    specification.  It verifies the provided authorization token, logs the request
+    parameters for debugging,  and checks if the specified prompt exists in the
+    PROMPTS_DB. If the prompt is found,  it returns the corresponding
+    PromptResponse, potentially applying filters based on  project_name, slug, or
+    version if provided.
+    
+    Args:
+        prompt_id: The ID of the prompt to fetch.
+        project_name: Optional project name for filtering.
+        slug: Optional slug for filtering.
+        version: Optional version for filtering.
+        authorization: Optional Bearer token for authentication.
+    """
     verify_api_key(authorization)
 
     # Log the request parameters (useful for debugging)
@@ -253,7 +250,7 @@ async def get_prompt(
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "mock-prompt-management-api",
@@ -263,13 +260,8 @@ async def health_check():
 
 @app.get("/prompts")
 async def list_prompts(authorization: Optional[str] = Header(None)):
-    """
-    List all available prompts.
-
-    This is a convenience endpoint (not part of the LiteLLM spec) for
-    discovering available prompts.
-    """
     # Verify authentication
+    """List all available prompts."""
     verify_api_key(authorization)
 
     prompts_list = [
@@ -290,13 +282,8 @@ async def list_prompts(authorization: Optional[str] = Header(None)):
 async def get_prompt_variables(
     prompt_id: str, authorization: Optional[str] = Header(None)
 ):
-    """
-    Get all variables in a prompt template.
-
-    This is a convenience endpoint (not part of the LiteLLM spec) for
-    discovering what variables a prompt expects.
-    """
     # Verify authentication
+    """Get all variables in a prompt template."""
     verify_api_key(authorization)
 
     if prompt_id not in PROMPTS_DB:
@@ -331,12 +318,8 @@ async def get_prompt_variables(
 async def create_prompt(
     prompt: PromptResponse, authorization: Optional[str] = Header(None)
 ):
-    """
-    Create a new prompt (convenience endpoint for testing).
-
-    This is NOT part of the LiteLLM spec - it's just for testing purposes.
-    """
     # Verify authentication
+    """Create a new prompt for testing purposes."""
     verify_api_key(authorization)
 
     if prompt.prompt_id in PROMPTS_DB:

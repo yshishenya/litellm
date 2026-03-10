@@ -28,12 +28,14 @@ class CheckBatchCost:
         self.llm_router: Router = llm_router
 
     async def check_batch_cost(self):
-        """
-        Check if the batch JOB has been tracked.
-        - get all status="validating" and file_purpose="batch" jobs
-        - check if batch is now complete
-        - if not, return False
-        - if so, return True
+        """Check if the batch JOB has been tracked and calculate its cost and usage.
+        
+        This function retrieves jobs with status "validating", "in_progress", or
+        "finalizing" and checks if they are complete. For each job, it validates the
+        unified object ID, retrieves the model and batch IDs, and queries the model for
+        cost and usage. If the batch is complete, it processes the output file,
+        calculates the batch cost and usage, and logs the results. Finally, it updates
+        the job status to complete if applicable.
         """
         from litellm.batches.batch_utils import (
             _get_file_content_as_dictionary,
