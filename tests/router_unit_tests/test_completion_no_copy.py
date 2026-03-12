@@ -110,3 +110,73 @@ def test_completion_deployment_not_mutated():
     assert deployment_after is not None
     assert deployment_after.litellm_params.model_dump() == original_params
 
+
+@pytest.mark.asyncio
+async def test_acompletion_uses_deployment_model_not_user_facing_alias():
+    router = Router(
+        model_list=[
+            {
+                "model_name": "openrouter/openai/gpt-4o-mini",
+                "litellm_params": {
+                    "model": "openai/gpt-4o-mini",
+                    "custom_llm_provider": "openrouter",
+                    "api_key": "test-key",
+                },
+            }
+        ]
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion:
+        from litellm import ModelResponse
+
+        mock_acompletion.return_value = ModelResponse(
+            id="test",
+            choices=[{"message": {"role": "assistant", "content": "test"}, "index": 0}],
+            model="openai/gpt-4o-mini",
+            usage={"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        )
+
+        await router.acompletion(
+            model="openrouter/openai/gpt-4o-mini",
+            messages=[{"role": "user", "content": "test"}],
+        )
+
+        completion_kwargs = mock_acompletion.call_args.kwargs
+
+    assert completion_kwargs["model"] == "openai/gpt-4o-mini"
+    assert completion_kwargs["metadata"]["model_group"] == "openrouter/openai/gpt-4o-mini"
+
+
+def test_completion_uses_deployment_model_not_user_facing_alias():
+    router = Router(
+        model_list=[
+            {
+                "model_name": "openrouter/openai/gpt-4o-mini",
+                "litellm_params": {
+                    "model": "openai/gpt-4o-mini",
+                    "custom_llm_provider": "openrouter",
+                    "api_key": "test-key",
+                },
+            }
+        ]
+    )
+
+    with patch("litellm.completion", new_callable=Mock) as mock_completion:
+        from litellm import ModelResponse
+
+        mock_completion.return_value = ModelResponse(
+            id="test",
+            choices=[{"message": {"role": "assistant", "content": "test"}, "index": 0}],
+            model="openai/gpt-4o-mini",
+            usage={"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        )
+
+        router.completion(
+            model="openrouter/openai/gpt-4o-mini",
+            messages=[{"role": "user", "content": "test"}],
+        )
+
+        completion_kwargs = mock_completion.call_args.kwargs
+
+    assert completion_kwargs["model"] == "openai/gpt-4o-mini"
+    assert completion_kwargs["metadata"]["model_group"] == "openrouter/openai/gpt-4o-mini"

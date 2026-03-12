@@ -2222,6 +2222,12 @@ class Router:
             }
         )
 
+        # Downstream provider calls must use the selected deployment model, not the
+        # user-facing alias/model_group. Completion-style handlers spread kwargs
+        # after deployment params, so leaving the original model here can override
+        # the normalized provider model (e.g. wildcard routes like openrouter/*).
+        kwargs["model"] = deployment_litellm_model_name
+
         ## DEPLOYMENT-LEVEL TAGS
         deployment_tags = deployment.get("litellm_params", {}).get("tags")
         if deployment_tags:
