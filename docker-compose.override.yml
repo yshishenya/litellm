@@ -4,3 +4,5 @@ services:
       context: .
       dockerfile: docker/Dockerfile.dev
     image: litellm:local
+    environment:
+      DISABLE_SCHEMA_UPDATE: "true"
