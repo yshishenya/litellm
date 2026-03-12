@@ -88,3 +88,22 @@ class TestOpenRouterNativeModelRouting:
         result_model, provider, _, _ = litellm.get_llm_provider(model=input_model)
         assert provider == "openrouter"
         assert result_model == expected_model
+
+    @pytest.mark.parametrize(
+        "input_model,expected_model",
+        [
+            ("qwen/qwen3.5-plus-02-15", "qwen/qwen3.5-plus-02-15"),
+            ("openrouter/qwen/qwen3.5-plus-02-15", "qwen/qwen3.5-plus-02-15"),
+            ("openrouter/openai/gpt-4o-mini", "openai/gpt-4o-mini"),
+        ],
+    )
+    def test_custom_provider_openrouter_does_not_force_invalid_prefix(
+        self, input_model, expected_model
+    ):
+        """custom_llm_provider=openrouter should preserve upstream-valid model IDs."""
+        result_model, provider, _, _ = litellm.get_llm_provider(
+            model=input_model,
+            custom_llm_provider="openrouter",
+        )
+        assert provider == "openrouter"
+        assert result_model == expected_model
